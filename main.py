@@ -1,7 +1,7 @@
 import os
+import subprocess
 import sys
 import threading
-import subprocess
 import time
 
 # 添加当前目录到系统路径
@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 # 导入各个模块
 from interface.bridge.websocket_bridge import WebSocketBridge
-from ai_service.api_service.api_server import app as api_app
+from interface.api.api_server import app as api_app
 
 
 def start_websocket_bridge():

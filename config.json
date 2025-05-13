@@ -1,0 +1,20 @@
+{
+  "robot": {
+    "ip": "127.0.0.1",
+    "port": 9559,
+    "simulation_mode": true
+  },
+  "knowledge_graph": {
+    "uri": "bolt://localhost:7687",
+    "user": "neo4j",
+    "password": "adminadmin"
+  },
+  "llm": {
+    "model_path": "models/deepseek-coder-1.3b-base",
+    "use_8bit": true
+  },
+  "data_paths": {
+    "student_profiles": "data/student_profiles",
+    "course_materials": "data/course_materials"
+  }
+}

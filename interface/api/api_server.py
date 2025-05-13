@@ -1,7 +1,8 @@
+import os
+import sys
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import sys
-import os
 
 # 添加父目录到系统路径
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
