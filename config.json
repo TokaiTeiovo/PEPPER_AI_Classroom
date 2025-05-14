@@ -15,6 +15,10 @@
   },
   "data_paths": {
     "student_profiles": "data/student_profiles",
-    "course_materials": "data/course_materials"
+    "course_materials": "data/course_materials",
+    "learning_analytics": "data/learning_analytics"
+  },
+  "websocket": {
+    "url": "ws://localhost:8765"
   }
 }

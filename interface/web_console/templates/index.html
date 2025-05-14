@@ -1,0 +1,501 @@
+<!-- 在interface/web_console/templates/index.html创建 -->
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>PEPPER机器人智能教学系统控制台</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #4a86e8;
+            color: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            margin: 0;
+        }
+        .panel {
+            background-color: white;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .row {
+            display: flex;
+            margin: 0 -10px;
+        }
+        .col {
+            flex: 1;
+            padding: 0 10px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4a86e8;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #3b78e7;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .log-container {
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .log-entry.info {
+            color: #333;
+        }
+        .log-entry.warning {
+            color: #856404;
+            background-color: #fff3cd;
+        }
+        .log-entry.error {
+            color: #721c24;
+            background-color: #f8d7da;
+        }
+        .chat-container {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        .chat-message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 10px;
+        }
+        .chat-user {
+            background-color: #e6f2ff;
+            margin-left: 20%;
+            text-align: right;
+        }
+        .chat-system {
+            background-color: #f0f0f0;
+            margin-right: 20%;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-on {
+            background-color: #28a745;
+        }
+        .status-off {
+            background-color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>PEPPER机器人智能教学系统控制台</h1>
+        </div>
+
+        <div class="row">
+            <div class="col">
+                <div class="panel">
+                    <h2>系统控制</h2>
+                    <div class="form-group">
+                        <label>系统状态:</label>
+                        <div>
+                            <span class="status-indicator" id="status-initialized"></span>
+                            <span id="status-initialized-text">未初始化</span>
+                            &nbsp;&nbsp;
+                            <span class="status-indicator" id="status-running"></span>
+                            <span id="status-running-text">未运行</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>配置文件:</label>
+                        <input type="text" id="config-path" value="config.json">
+                    </div>
+                    <div class="form-group">
+                        <button id="btn-initialize">初始化系统</button>
+                        <button id="btn-clean-up" disabled>清理资源</button>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h2>教学会话</h2>
+                    <div class="form-group">
+                        <label>学生:</label>
+                        <select id="student-select" disabled></select>
+                    </div>
+                    <div class="form-group">
+                        <label>主题:</label>
+                        <input type="text" id="topic-input" disabled>
+                    </div>
+                    <div class="form-group">
+                        <button id="btn-start-session" disabled>启动会话</button>
+                        <button id="btn-stop-session" disabled>停止会话</button>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h2>系统日志</h2>
+                    <div class="log-container" id="log-container"></div>
+                </div>
+            </div>
+
+            <div class="col">
+                <div class="panel">
+                    <h2>聊天界面</h2>
+                    <div class="chat-container" id="chat-container"></div>
+                    <div class="form-group" style="margin-top: 10px;">
+                        <textarea id="input-text" rows="3" placeholder="输入消息..." disabled></textarea>
+                    </div>
+                    <div class="form-group">
+                        <button id="btn-send" disabled>发送</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM元素
+        const statusInitialized = document.getElementById('status-initialized');
+        const statusInitializedText = document.getElementById('status-initialized-text');
+        const statusRunning = document.getElementById('status-running');
+        const statusRunningText = document.getElementById('status-running-text');
+        const configPath = document.getElementById('config-path');
+        const btnInitialize = document.getElementById('btn-initialize');
+        const btnCleanUp = document.getElementById('btn-clean-up');
+        const studentSelect = document.getElementById('student-select');
+        const topicInput = document.getElementById('topic-input');
+        const btnStartSession = document.getElementById('btn-start-session');
+        const btnStopSession = document.getElementById('btn-stop-session');
+        const logContainer = document.getElementById('log-container');
+        const chatContainer = document.getElementById('chat-container');
+        const inputText = document.getElementById('input-text');
+        const btnSend = document.getElementById('btn-send');
+
+        // 系统状态
+        let systemStatus = {
+            initialized: false,
+            running: false,
+            student_id: null,
+            topic: null,
+            log_messages: []
+        };
+
+        // 更新状态指示器
+        function updateStatusIndicators() {
+            if (systemStatus.initialized) {
+                statusInitialized.className = 'status-indicator status-on';
+                statusInitializedText.textContent = '已初始化';
+                btnInitialize.disabled = true;
+                btnCleanUp.disabled = false;
+                studentSelect.disabled = false;
+                topicInput.disabled = false;
+                btnStartSession.disabled = false;
+            } else {
+                statusInitialized.className = 'status-indicator status-off';
+                statusInitializedText.textContent = '未初始化';
+                btnInitialize.disabled = false;
+                btnCleanUp.disabled = true;
+                studentSelect.disabled = true;
+                topicInput.disabled = true;
+                btnStartSession.disabled = true;
+                btnStopSession.disabled = true;
+                inputText.disabled = true;
+                btnSend.disabled = true;
+            }
+
+            if (systemStatus.running) {
+                statusRunning.className = 'status-indicator status-on';
+                statusRunningText.textContent = '正在运行';
+                btnStartSession.disabled = true;
+                btnStopSession.disabled = false;
+                inputText.disabled = false;
+                btnSend.disabled = false;
+            } else {
+                statusRunning.className = 'status-indicator status-off';
+                statusRunningText.textContent = '未运行';
+                btnStopSession.disabled = true;
+                inputText.disabled = true;
+                btnSend.disabled = true;
+            }
+        }
+
+        // 更新日志显示
+        function updateLogs() {
+            logContainer.innerHTML = '';
+
+            systemStatus.log_messages.forEach(log => {
+                const logEntry = document.createElement('div');
+                logEntry.className = `log-entry ${log.level.toLowerCase()}`;
+                logEntry.textContent = `[${log.timestamp}] [${log.level}] ${log.message}`;
+                logContainer.appendChild(logEntry);
+            });
+
+            // 滚动到底部
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // 添加聊天消息
+        function addChatMessage(sender, message) {
+            const chatMessage = document.createElement('div');
+            chatMessage.className = `chat-message chat-${sender}`;
+            chatMessage.textContent = message;
+            chatContainer.appendChild(chatMessage);
+
+            // 滚动到底部
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // 获取系统状态
+        async function getStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+
+                systemStatus = data;
+                updateStatusIndicators();
+                updateLogs();
+
+            } catch (error) {
+                console.error('获取状态失败:', error);
+            }
+        }
+
+        // 初始化系统
+        async function initializeSystem() {
+            try {
+                const response = await fetch('/api/initialize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        config_path: configPath.value
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    getStatus();
+                    getStudents();
+                } else {
+                    alert(`初始化失败: ${data.message}`);
+                }
+
+            } catch (error) {
+                console.error('初始化系统失败:', error);
+                alert('初始化系统失败');
+            }
+        }
+
+        // 清理资源
+        async function cleanUp() {
+            try {
+                const response = await fetch('/api/clean_up', {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    getStatus();
+                } else {
+                    alert(`清理资源失败: ${data.message}`);
+                }
+
+            } catch (error) {
+                console.error('清理资源失败:', error);
+                alert('清理资源失败');
+            }
+        }
+
+        // 获取学生列表
+        async function getStudents() {
+            try {
+                const response = await fetch('/api/get_students');
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    studentSelect.innerHTML = '';
+
+                    data.students.forEach(student => {
+                        const option = document.createElement('option');
+                        option.value = student.id;
+                        option.textContent = `${student.name} (${student.id})`;
+                        studentSelect.appendChild(option);
+                    });
+                } else {
+                    alert(`获取学生列表失败: ${data.message}`);
+                }
+
+            } catch (error) {
+                console.error('获取学生列表失败:', error);
+                alert('获取学生列表失败');
+            }
+        }
+
+        // 启动会话
+        async function startSession() {
+            try {
+                const response = await fetch('/api/start_session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        student_id: studentSelect.value,
+                        topic: topicInput.value
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    getStatus();
+
+                    // 添加欢迎消息
+                    if (data.welcome_message) {
+                        addChatMessage('system', data.welcome_message);
+                    }
+                } else {
+                    alert(`启动会话失败: ${data.message}`);
+                }
+
+            } catch (error) {
+                console.error('启动会话失败:', error);
+                alert('启动会话失败');
+            }
+        }
+
+        // 停止会话
+        async function stopSession() {
+            try {
+                const response = await fetch('/api/stop_session', {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    getStatus();
+                    addChatMessage('system', '教学会话已结束');
+                } else {
+                    alert(`停止会话失败: ${data.message}`);
+                }
+
+            } catch (error) {
+                console.error('停止会话失败:', error);
+                alert('停止会话失败');
+            }
+        }
+
+        // 发送消息
+        async function sendMessage() {
+            const message = inputText.value.trim();
+
+            if (!message) {
+                return;
+            }
+
+            try {
+                // 添加用户消息
+                addChatMessage('user', message);
+
+                // 清空输入框
+                inputText.value = '';
+
+                const response = await fetch('/api/process_input', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: message
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    // 添加系统回复
+                    addChatMessage('system', data.response);
+                } else {
+                    addChatMessage('system', `错误: ${data.message}`);
+                }
+
+            } catch (error) {
+                console.error('发送消息失败:', error);
+                addChatMessage('system', '发送消息失败');
+            }
+        }
+
+        // 事件监听
+        btnInitialize.addEventListener('click', initializeSystem);
+        btnCleanUp.addEventListener('click', cleanUp);
+        btnStartSession.addEventListener('click', startSession);
+        btnStopSession.addEventListener('click', stopSession);
+        btnSend.addEventListener('click', sendMessage);
+
+        // 回车发送
+        inputText.addEventListener('keydown', event => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // 定时获取状态更新
+        setInterval(getStatus, 2000);
+
+        // 初始化界面
+        getStatus();
+    </script>
+</body>
+</html>

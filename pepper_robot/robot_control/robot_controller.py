@@ -1,7 +1,76 @@
-import time
-import sys
+# 修改 pepper_robot/robot_control/robot_controller.py 文件
 import argparse
-from naoqi import ALProxy
+import sys
+import time
+
+#from naoqi import ALProxy
+
+try:
+    from naoqi import ALProxy
+except ImportError:
+    print("使用模拟的 naoqi 模块")
+    # 尝试导入我们创建的模拟模块
+    try:
+        sys.path.append('.')  # 添加当前目录到路径
+        from naoqi import ALProxy
+    except ImportError:
+        # 如果仍然失败，创建一个内部模拟类
+        class ALProxy:
+            """内部模拟的 ALProxy 类"""
+
+            def __init__(self, service_name, ip="127.0.0.1", port=9559):
+                print(f"模拟创建 {service_name} 服务连接 {ip}:{port}")
+                self.service_name = service_name
+
+            def say(self, text):
+                print(f"机器人说: {text}")
+                return True
+
+            def setLanguage(self, language):
+                print(f"设置语言为: {language}")
+                return True
+
+            def moveTo(self, x, y, theta):
+                print(f"机器人移动到: x={x}, y={y}, 角度={theta}")
+                return True
+
+            def goToPosture(self, posture_name, speed):
+                print(f"机器人设置姿势: {posture_name}, 速度={speed}")
+                return True
+
+            def run(self, animation_name):
+                print(f"机器人运行动画: {animation_name}")
+                return True
+
+            def rest(self):
+                print("机器人进入休息状态")
+                return True
+
+            def wakeUp(self):
+                print("机器人唤醒")
+                return True
+
+            def subscribeCamera(self, client_name, camera_id, resolution, colorSpace, fps):
+                print(f"订阅摄像头: {client_name}, 相机ID={camera_id}")
+                return "camera_handle"
+
+            def getImageRemote(self, handle):
+                print(f"获取摄像头图像: {handle}")
+                return [320, 240, 3, 1, b'\x00' * (320 * 240 * 3)]
+
+            def unsubscribe(self, handle):
+                print(f"取消订阅: {handle}")
+                return True
+
+            def enableEnergyComputation(self):
+                print("启用音频能量计算")
+                return True
+
+            def getFrontMicEnergy(self):
+                import random
+                energy = random.uniform(50.0, 90.0)
+                print(f"麦克风能量: {energy:.2f}")
+                return energy
 
 
 class PepperRobot:

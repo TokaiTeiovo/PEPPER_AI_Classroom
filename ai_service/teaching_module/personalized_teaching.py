@@ -151,6 +151,163 @@ class StudentProfile:
             logger.error(f"加载学生档案失败: {e}")
             return None
 
+    def generate_student_report(self, student_id):
+        """生成学生学习报告"""
+        profile = self.get_student_profile(student_id)
+        if not profile:
+            self.logger.error(f"找不到学生档案: {student_id}")
+            return None
+
+        report = {
+            "student_id": student_id,
+            "student_name": profile.name,
+            "learning_style": profile.learning_style,
+            "report_date": datetime.datetime.now().isoformat(),
+            "strengths": profile.get_top_strengths(5),
+            "weaknesses": profile.get_top_weaknesses(5),
+            "preferences": profile.get_top_preferences(5),
+            "recommendations": []
+        }
+
+        # 生成学习建议
+        for topic, _ in report["weaknesses"]:
+            # 为每个弱项主题生成学习路径
+            learning_path = self.generate_learning_path(student_id, topic)
+            if learning_path:
+                report["recommendations"].append({
+                    "topic": topic,
+                    "learning_path": learning_path["learning_path"]
+                })
+
+            # 推荐相关资源
+            resources = self.recommend_learning_resources(student_id, topic, count=2)
+            if resources:
+                if not any(r.get("topic") == topic for r in report["recommendations"]):
+                    report["recommendations"].append({"topic": topic, "resources": []})
+
+                for r in report["recommendations"]:
+                    if r.get("topic") == topic:
+                        r["resources"] = resources
+                        break
+
+        return report
+
+    def export_report_to_html(self, report, output_path=None):
+        """将学生报告导出为HTML格式"""
+        if not report:
+            return None
+
+        student_id = report["student_id"]
+        student_name = report["student_name"]
+
+        if not output_path:
+            # 默认输出路径
+            reports_dir = os.path.join(self.config["data_paths"]["student_profiles"], "reports")
+            os.makedirs(reports_dir, exist_ok=True)
+            output_path = os.path.join(reports_dir, f"{student_id}_report.html")
+
+        try:
+            # 生成HTML内容
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>学习报告 - {student_name}</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; }}
+                    .container {{ max-width: 800px; margin: 0 auto; }}
+                    .header {{ background-color: #4a86e8; color: white; padding: 20px; border-radius: 5px; }}
+                    .section {{ background-color: #f5f5f5; padding: 15px; margin: 15px 0; border-radius: 5px; }}
+                    .item {{ margin: 10px 0; }}
+                    .topic {{ font-weight: bold; color: #4a86e8; }}
+                    h2 {{ color: #333; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">
+                        <h1>学生学习报告</h1>
+                        <p>学生ID: {student_id}</p>
+                        <p>学生姓名: {student_name}</p>
+                        <p>报告日期: {report["report_date"]}</p>
+                        <p>学习风格: {report["learning_style"]}</p>
+                    </div>
+
+                    <div class="section">
+                        <h2>擅长领域</h2>
+            """
+
+            # 添加擅长领域
+            for topic, score in report["strengths"]:
+                html_content += f'<div class="item"><span class="topic">{topic}</span>: {score:.1f}</div>'
+
+            html_content += """
+                    </div>
+
+                    <div class="section">
+                        <h2>需要提升的领域</h2>
+            """
+
+            # 添加弱项
+            for topic, score in report["weaknesses"]:
+                html_content += f'<div class="item"><span class="topic">{topic}</span>: {score:.1f}</div>'
+
+            html_content += """
+                    </div>
+
+                    <div class="section">
+                        <h2>学习兴趣</h2>
+            """
+
+            # 添加兴趣
+            for topic, count in report["preferences"]:
+                html_content += f'<div class="item"><span class="topic">{topic}</span>: 互动次数 {count}</div>'
+
+            html_content += """
+                    </div>
+
+                    <div class="section">
+                        <h2>个性化学习建议</h2>
+            """
+
+            # 添加建议
+            for recommendation in report["recommendations"]:
+                topic = recommendation.get("topic", "")
+                html_content += f'<div class="item"><h3>{topic}</h3>'
+
+                if "learning_path" in recommendation:
+                    path_html = recommendation["learning_path"].replace("\n", "<br>")
+                    html_content += f'<p>{path_html}</p>'
+
+                if "resources" in recommendation and recommendation["resources"]:
+                    html_content += '<h4>推荐资源:</h4><ul>'
+                    for resource in recommendation["resources"]:
+                        title = resource.get("title", "")
+                        url = resource.get("url", "")
+                        res_type = resource.get("type", "")
+                        html_content += f'<li><a href="{url}" target="_blank">{title}</a> ({res_type})</li>'
+                    html_content += '</ul>'
+
+                html_content += '</div>'
+
+            html_content += """
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+
+            # 写入文件
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+
+            return output_path
+
+        except Exception as e:
+            self.logger.error(f"导出HTML报告失败: {e}")
+            return None
+
 
 class PersonalizedTeaching:
     """个性化教学模块，基于学生档案提供个性化学习建议"""

@@ -1,11 +1,5 @@
 """
 PEPPER机器人智能教学集成系统
-
-这是一个集成系统，将多模态交互、知识图谱、大语言模型和个性化教学等功能
-整合到PEPPER机器人控制中，实现完整的"人工智能+"课堂智能化应用。
-
-作者：杜伯涵
-指导教师：乔文豹
 """
 
 import argparse
@@ -23,7 +17,6 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 # 导入多模态交互模块
 from ai_service.multimodal.speech_recognition import SpeechRecognizer
 from ai_service.multimodal.image_recognition import ImageRecognizer
-from env_caller import call_spacy_env, call_langchain_env
 
 # 导入知识图谱模块
 from ai_service.knowledge_graph.knowledge_graph import KnowledgeGraph
@@ -42,6 +35,9 @@ from pepper_robot.sensor_module.sensor_handler import PepperSensors
 
 # 导入通信桥接模块
 from interface.bridge.websocket_client import WebSocketClient
+
+from env_caller import call_spacy_env, call_langchain_env
+
 
 # 配置日志
 logging.basicConfig(
@@ -704,6 +700,40 @@ class PepperIntegratedSystem:
         except Exception as e:
             logger.error(f"解析LangChain结果失败: {e}")
             return None
+
+    def _initialize_teaching_actions(self):
+        """初始化教学动作"""
+        try:
+            robot_config = self.config["robot"]
+            from pepper_robot.motion_module.teaching_actions import TeachingActions
+
+            self.teaching_actions = TeachingActions(
+                ip=robot_config["ip"],
+                port=robot_config["port"],
+                simulation_mode=robot_config["simulation_mode"]
+            )
+            logger.info("教学动作模块初始化成功")
+            return True
+        except Exception as e:
+            logger.error(f"初始化教学动作模块失败: {e}")
+            return False
+
+    def _initialize_kg_llm_integration(self):
+        """初始化知识图谱和LLM集成"""
+        try:
+            kg_config = self.config["knowledge_graph"]
+            from ai_service.llm_module.kg_llm_integration import KnowledgeLLMIntegration
+
+            self.kg_llm = KnowledgeLLMIntegration(
+                kg_uri=kg_config["uri"],
+                kg_user=kg_config["user"],
+                kg_password=kg_config["password"]
+            )
+            logger.info("知识图谱和LLM集成模块初始化成功")
+            return True
+        except Exception as e:
+            logger.error(f"初始化知识图谱和LLM集成模块失败: {e}")
+            return False
 
 
 def main():
