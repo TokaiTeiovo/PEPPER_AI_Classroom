@@ -23,7 +23,7 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 # 导入多模态交互模块
 from ai_service.multimodal.speech_recognition import SpeechRecognizer
 from ai_service.multimodal.image_recognition import ImageRecognizer
-from ai_service.multimodal.text_processor import TextProcessor
+from env_caller import call_spacy_env, call_langchain_env
 
 # 导入知识图谱模块
 from ai_service.knowledge_graph.knowledge_graph import KnowledgeGraph
@@ -31,7 +31,6 @@ from ai_service.knowledge_graph.education_knowledge_processor import EducationKn
 
 # 导入大语言模型模块
 from ai_service.llm_module.llm_interface import LLMService
-from ai_service.llm_module.langchain_integration import LangChainIntegration
 
 # 导入个性化教学模块
 from ai_service.teaching_module.personalized_teaching import PersonalizedTeaching
@@ -119,9 +118,7 @@ class PepperIntegratedSystem:
             logger.info("正在初始化多模态交互模块...")
             self.speech_recognizer = SpeechRecognizer()
             self.image_recognizer = ImageRecognizer()
-            self.text_processor = TextProcessor()
 
-            # 初始化知识图谱模块
             logger.info("正在初始化知识图谱模块...")
             kg_config = self.config["knowledge_graph"]
             self.knowledge_graph = KnowledgeGraph(
@@ -135,9 +132,6 @@ class PepperIntegratedSystem:
             logger.info("正在初始化大语言模型模块...")
             llm_config = self.config["llm"]
             self.llm_service = LLMService(llm_config["model_path"])
-            self.langchain = LangChainIntegration(
-                kg_config["uri"], kg_config["user"], kg_config["password"]
-            )
 
             # 初始化个性化教学模块
             logger.info("正在初始化个性化教学模块...")
@@ -422,10 +416,14 @@ class PepperIntegratedSystem:
 
         # 使用文本处理器分析输入
         try:
-            # 分词和关键词提取
-            words = self.text_processor.preprocess_text(text)
-            keywords = self.text_processor.extract_keywords(text)
-            question_type = self.text_processor.classify_question(text)
+            stdout, stderr, returncode = call_spacy_env("spacy_functions.py", text)
+            if returncode != 0:
+                logger.error(f"文本处理失败: {stderr}")
+                return None
+
+            text_analysis = json.loads(stdout)
+            keywords = text_analysis["keywords"]
+            question_type = text_analysis["question_type"]
 
             logger.info(f"文本分析结果: 问题类型={question_type}, 关键词={keywords}")
 
@@ -683,6 +681,29 @@ class PepperIntegratedSystem:
             logger.error(f"运行教学流程失败: {e}")
             self.clean_up()
             return False
+
+    def use_langchain_query(self, query):
+        """使用langchain查询知识图谱"""
+        kg_config = self.config["knowledge_graph"]
+
+        stdout, stderr, returncode = call_langchain_env(
+            "langchain_functions.py",
+            query,
+            kg_config["uri"],
+            kg_config["user"],
+            kg_config["password"]
+        )
+
+        if returncode != 0:
+            logger.error(f"LangChain查询失败: {stderr}")
+            return None
+
+        try:
+            result = json.loads(stdout)
+            return result["response"]
+        except Exception as e:
+            logger.error(f"解析LangChain结果失败: {e}")
+            return None
 
 
 def main():

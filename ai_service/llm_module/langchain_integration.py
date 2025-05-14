@@ -1,6 +1,6 @@
-from langchain_community.graphs import Neo4jGraph
 from langchain_community.chains.graph_qa.cypher import GraphCypherQAChain
-from langchain.llms import HuggingFacePipeline
+from langchain_community.llms import HuggingFacePipeline
+from langchain_neo4j import Neo4jGraph
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 
 
