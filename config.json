@@ -7,7 +7,7 @@
   "knowledge_graph": {
     "uri": "bolt://localhost:7687",
     "user": "neo4j",
-    "password": "adminadmin"
+    "password": "admin123"
   },
   "llm": {
     "model_path": "models/deepseek-coder-1.3b-base",

@@ -8,16 +8,13 @@ import json
 import logging
 import os
 import sys
-import threading
 import time
-import tkinter as tk
 
 # 添加项目根目录到系统路径
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 # 导入集成系统和模拟器
 from integrated_system import PepperIntegratedSystem
-from pepper_robot.simulation.pepper_simulator import PepperSimulator
 
 # 配置日志
 logging.basicConfig(
@@ -64,14 +61,13 @@ class PepperDemoApp:
         """启动PEPPER机器人模拟器"""
         logger.info("正在启动PEPPER机器人模拟器...")
 
-        # 创建Tkinter根窗口
-        self.simulator_root = tk.Tk()
-        self.simulator = PepperSimulator(self.simulator_root)
+        # 创建一个不使用Tkinter的模拟器实例
+        from pepper_robot.simulation.pepper_simulator import PepperSimulator
+        self.simulator = PepperSimulator()  # 不传入Tkinter根窗口
 
-        # 启动模拟器线程
-        self.simulator_thread = threading.Thread(target=self._run_simulator)
-        self.simulator_thread.daemon = True
-        self.simulator_thread.start()
+        # 检查模拟器类中是否有start方法，如果没有，我们不调用它
+        if hasattr(self.simulator, 'is_running'):
+            self.simulator.is_running = True
 
         logger.info("PEPPER机器人模拟器已启动")
 

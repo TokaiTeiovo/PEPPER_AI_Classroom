@@ -32,11 +32,10 @@ from ai_service.teaching_module.personalized_teaching import PersonalizedTeachin
 from pepper_robot.robot_control.robot_controller import PepperRobot
 from pepper_robot.motion_module.gestures import PepperGestures
 from pepper_robot.sensor_module.sensor_handler import PepperSensors
-
 # 导入通信桥接模块
 from interface.bridge.websocket_client import WebSocketClient
 
-from env_caller import call_spacy_env, call_langchain_env
+from env_caller import call_langchain_env
 
 
 # 配置日志
@@ -181,6 +180,7 @@ class PepperIntegratedSystem:
                 logger.info(f"知识图谱已包含 {result[0]['count']} 个节点")
         except Exception as e:
             logger.error(f"加载教育知识失败: {e}")
+            logger.warning("继续运行，但知识图谱功能可能不可用")
 
     def _load_student_profiles(self):
         """加载学生档案"""
@@ -410,24 +410,37 @@ class PepperIntegratedSystem:
             "timestamp": datetime.datetime.now().isoformat()
         })
 
-        # 使用文本处理器分析输入
+        # 使用简单的文本处理逻辑
         try:
-            stdout, stderr, returncode = call_spacy_env("spacy_functions.py", text)
-            if returncode != 0:
-                logger.error(f"文本处理失败: {stderr}")
-                return None
+            # 简单的关键词提取
+            keywords = []
+            for word in text.split():
+                if len(word) > 1 and word not in keywords:
+                    keywords.append(word)
+                if len(keywords) >= 5:
+                    break
 
-            text_analysis = json.loads(stdout)
-            keywords = text_analysis["keywords"]
-            question_type = text_analysis["question_type"]
+            # 简单的问题类型分类
+            question_type = "其他问题"
+            if "什么是" in text or "what is" in text:
+                question_type = "定义型问题"
+            elif "如何" in text or "怎么" in text or "how" in text:
+                question_type = "方法型问题"
+            elif "为什么" in text or "why" in text:
+                question_type = "原因型问题"
+            elif "区别" in text or "比较" in text or "difference" in text or "compare" in text:
+                question_type = "比较型问题"
 
             logger.info(f"文本分析结果: 问题类型={question_type}, 关键词={keywords}")
 
             # 获取知识图谱相关信息
             knowledge_items = []
             for keyword in keywords:
-                items = self.knowledge_graph.find_related_knowledge(keyword)
-                knowledge_items.extend(items)
+                try:
+                    items = self.knowledge_graph.find_related_knowledge(keyword)
+                    knowledge_items.extend(items)
+                except Exception as e:
+                    logger.warning(f"查询知识图谱失败: {e}")
 
             # 生成个性化回答
             response = self.teaching.generate_personalized_answer(

@@ -6,6 +6,8 @@
     <file url="file://$PROJECT_DIR$/ai_service/multimodal/__init__.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/check_model.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/integrated_system.py" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/interface/__init__.py" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/interface/bridge/__init__.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/pepper_robot/motion_module/__init__.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/pepper_robot/robot_control/__init__.py" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/pepper_robot/sensor_module/__init__.py" charset="UTF-8" />

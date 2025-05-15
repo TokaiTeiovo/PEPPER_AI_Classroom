@@ -1,98 +1,83 @@
-from naoqi import ALProxy
 import time
 
+from naoqi import ALProxy
 
-class PepperSensors:
+
+class PepperGestures:
     def __init__(self, ip="127.0.0.1", port=9559):
-        """初始化PEPPER传感器处理"""
+        """初始化PEPPER手势处理"""
         try:
-            self.memory = ALProxy("ALMemory", ip, port)
-            self.sonar = ALProxy("ALSonar", ip, port)
-            self.touch = ALProxy("ALTouch", ip, port)
-            self.camera = ALProxy("ALVideoDevice", ip, port)
-            self.speech = ALProxy("ALSpeechRecognition", ip, port)
+            self.animation = ALProxy("ALAnimationPlayer", ip, port)
+            self.motion = ALProxy("ALMotion", ip, port)
+            self.posture = ALProxy("ALRobotPosture", ip, port)
 
-            # 激活声纳传感器
-            self.sonar.subscribe("PepperSensors")
-
-            print("成功初始化PEPPER传感器处理")
+            print("成功初始化PEPPER手势处理")
         except Exception as e:
-            print(f"初始化PEPPER传感器处理失败: {e}")
+            print(f"初始化PEPPER手势处理失败: {e}")
             raise
 
-    def get_sonar_distance(self, side="front"):
-        """获取声纳测量的距离"""
+    def wave_hand(self):
+        """挥手手势"""
         try:
-            if side.lower() == "front":
-                return self.memory.getData("Device/SubDeviceList/Platform/Front/Sonar/Sensor/Value")
-            elif side.lower() == "back":
-                return self.memory.getData("Device/SubDeviceList/Platform/Back/Sonar/Sensor/Value")
-            else:
-                print(f"未知的声纳位置: {side}")
-                return None
-        except Exception as e:
-            print(f"获取声纳距离失败: {e}")
-            return None
-
-    def is_touched(self, sensor_name):
-        """检查指定的触摸传感器是否被触摸"""
-        try:
-            sensor_key = f"Device/SubDeviceList/{sensor_name}/Actuator/Value"
-            return self.memory.getData(sensor_key) == 1.0
-        except Exception as e:
-            print(f"检查触摸传感器失败: {e}")
-            return False
-
-    def setup_speech_recognition(self, vocabulary, language="Chinese"):
-        """设置语音识别"""
-        try:
-            self.speech.setLanguage(language)
-            self.speech.setVocabulary(vocabulary, False)
+            self.animation.run("animations/Hello")
             return True
         except Exception as e:
-            print(f"设置语音识别失败: {e}")
+            print(f"挥手手势失败: {e}")
             return False
 
-    def start_speech_recognition(self, callback_module="PepperSensors"):
-        """启动语音识别"""
+    def thinking_gesture(self):
+        """思考手势"""
         try:
-            self.speech.subscribe(callback_module)
+            self.animation.run("animations/Thinking")
             return True
         except Exception as e:
-            print(f"启动语音识别失败: {e}")
+            print(f"思考手势失败: {e}")
             return False
 
-    def stop_speech_recognition(self, callback_module="PepperSensors"):
-        """停止语音识别"""
+    def point_to_board(self):
+        """指向黑板手势"""
         try:
-            self.speech.unsubscribe(callback_module)
+            self.animation.run("animations/Pointing")
             return True
         except Exception as e:
-            print(f"停止语音识别失败: {e}")
+            print(f"指向黑板手势失败: {e}")
             return False
 
-    def get_recognized_words(self):
-        """获取识别到的词语"""
+    def shake_head(self):
+        """摇头手势"""
         try:
-            words = self.memory.getData("WordRecognized")
-            if words and len(words) >= 2 and words[1] > 0.5:  # 置信度阈值
-                return words[0]
-            return None
-        except Exception as e:
-            print(f"获取识别词语失败: {e}")
-            return None
-
-    def clean_up(self):
-        """清理资源"""
-        try:
-            self.sonar.unsubscribe("PepperSensors")
-            self.stop_speech_recognition()
-            print("成功清理PEPPER传感器资源")
+            self.animation.run("animations/No")
             return True
         except Exception as e:
-            print(f"清理传感器资源失败: {e}")
+            print(f"摇头手势失败: {e}")
             return False
 
+    def nod_head(self):
+        """点头手势"""
+        try:
+            self.animation.run("animations/Yes")
+            return True
+        except Exception as e:
+            print(f"点头手势失败: {e}")
+            return False
+
+    def applause(self):
+        """鼓掌手势"""
+        try:
+            self.animation.run("animations/Applause")
+            return True
+        except Exception as e:
+            print(f"鼓掌手势失败: {e}")
+            return False
+
+    def bow(self):
+        """鞠躬手势"""
+        try:
+            self.animation.run("animations/Bow")
+            return True
+        except Exception as e:
+            print(f"鞠躬手势失败: {e}")
+            return False
 
 # 测试PEPPER传感器
 if __name__ == "__main__":

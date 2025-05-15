@@ -35,13 +35,12 @@ class PepperSimulator:
         self.current_gesture = "idle"
         self.simulation_thread = None
         self.speech_thread = None
+        self.root = root
 
         # 创建GUI（如果提供了root）
         if root:
-            self.root = root
             self.setup_ui()
         else:
-            self.root = None
             logger.info("运行在控制台模式（无GUI）")
 
     def setup_ui(self):
@@ -282,17 +281,20 @@ class PepperSimulator:
         logger.info(f"PEPPER说: {text}")
 
         if self.root:
-            # 更新UI
-            self.root.after(0, lambda: self._update_speech_display(text))
+            try:
+                # 更新UI（只有在主线程中调用）
+                self.root.after(0, lambda: self._update_speech_display(text))
 
-            # 模拟说话时间
-            words = len(text.split())
-            speak_time = max(1.5, words * 0.3)  # 估计说话时间
+                # 模拟说话时间
+                words = len(text.split())
+                speak_time = max(1.5, words * 0.3)  # 估计说话时间
 
-            # 模拟说话过程中的动作
-            self.root.after(0, lambda: self._update_gesture("talking"))
-            time.sleep(speak_time)
-            self.root.after(0, lambda: self._update_gesture("idle"))
+                # 模拟说话过程中的动作
+                self.root.after(0, lambda: self._update_gesture("talking"))
+                time.sleep(speak_time)
+                self.root.after(0, lambda: self._update_gesture("idle"))
+            except Exception as e:
+                logger.error(f"模拟器UI更新失败: {e}")
         else:
             # 控制台模式，只模拟时间
             words = len(text.split())

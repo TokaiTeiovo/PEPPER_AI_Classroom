@@ -5,66 +5,37 @@ import sys
 def call_spacy_env(script_name, text):
     """调用 spaCy 环境中的脚本处理文本"""
     try:
-        # 创建临时脚本文件
-        with open("spacy_functions.py", "w") as f:
-            f.write("""
-import spacy
-import json
-import sys
+        # 直接在当前进程中处理文本，避免使用subprocess
+        def process_text(text):
+            # 简单的关键词提取
+            keywords = []
+            for word in text.split():
+                if len(word) > 1 and word not in keywords:
+                    keywords.append(word)
+                if len(keywords) >= 5:
+                    break
 
-def process_text(text):
-    # 加载spaCy模型
-    try:
-        nlp = spacy.load("en_core_web_sm")
-    except:
-        # 如果英文模型不可用，尝试中文模型
-        try:
-            nlp = spacy.load("zh_core_web_sm")
-        except:
-            # 如果模型不可用，使用空白模型
-            nlp = spacy.blank("en")
+            # 简单的问题类型分类
+            question_type = "其他问题"
+            if "什么是" in text or "what is" in text:
+                question_type = "定义型问题"
+            elif "如何" in text or "怎么" in text or "how" in text:
+                question_type = "方法型问题"
+            elif "为什么" in text or "why" in text:
+                question_type = "原因型问题"
+            elif "区别" in text or "比较" in text or "difference" in text or "compare" in text:
+                question_type = "比较型问题"
 
-    # 处理文本
-    doc = nlp(text)
+            return {
+                "keywords": keywords if keywords else [text[:5] if len(text) > 5 else text],
+                "question_type": question_type
+            }
 
-    # 提取关键词（简化版）
-    keywords = [token.text for token in doc if token.pos_ in ("NOUN", "PROPN", "VERB") and not token.is_stop]
-    if not keywords:
-        keywords = [token.text for token in doc if not token.is_stop and token.is_alpha][:5]
+        # 直接处理文本
+        result = process_text(text)
+        result_json = json.dumps(result, ensure_ascii=False)
 
-    # 分类问题类型（简化版）
-    question_type = "其他问题"
-    if text.startswith("什么是") or text.startswith("what is"):
-        question_type = "定义型问题"
-    elif text.startswith("如何") or text.startswith("怎么") or text.startswith("how"):
-        question_type = "方法型问题"
-    elif text.startswith("为什么") or text.startswith("why"):
-        question_type = "原因型问题"
-    elif "区别" in text or "比较" in text or "difference" in text or "compare" in text:
-        question_type = "比较型问题"
-
-    # 返回结果
-    return {
-        "keywords": keywords[:5],  # 最多返回5个关键词
-        "question_type": question_type
-    }
-
-# 从命令行参数获取文本
-if len(sys.argv) > 1:
-    text = sys.argv[1]
-else:
-    text = ""
-
-# 处理文本并输出结果
-result = process_text(text)
-print(json.dumps(result, ensure_ascii=False))
-""")
-
-        # 调用脚本
-        result = subprocess.run([sys.executable, "spacy_functions.py", text],
-                                capture_output=True, text=True)
-
-        return result.stdout, result.stderr, result.returncode
+        return result_json, "", 0
 
     except Exception as e:
         return "", str(e), 1

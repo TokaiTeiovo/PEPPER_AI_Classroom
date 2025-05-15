@@ -1,4 +1,3 @@
-# 修改 pepper_robot/robot_control/robot_controller.py 文件
 import argparse
 import sys
 import time
