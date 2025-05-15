@@ -1,46 +1,6 @@
 import subprocess
 import sys
 
-
-def call_spacy_env(script_name, text):
-    """调用 spaCy 环境中的脚本处理文本"""
-    try:
-        # 直接在当前进程中处理文本，避免使用subprocess
-        def process_text(text):
-            # 简单的关键词提取
-            keywords = []
-            for word in text.split():
-                if len(word) > 1 and word not in keywords:
-                    keywords.append(word)
-                if len(keywords) >= 5:
-                    break
-
-            # 简单的问题类型分类
-            question_type = "其他问题"
-            if "什么是" in text or "what is" in text:
-                question_type = "定义型问题"
-            elif "如何" in text or "怎么" in text or "how" in text:
-                question_type = "方法型问题"
-            elif "为什么" in text or "why" in text:
-                question_type = "原因型问题"
-            elif "区别" in text or "比较" in text or "difference" in text or "compare" in text:
-                question_type = "比较型问题"
-
-            return {
-                "keywords": keywords if keywords else [text[:5] if len(text) > 5 else text],
-                "question_type": question_type
-            }
-
-        # 直接处理文本
-        result = process_text(text)
-        result_json = json.dumps(result, ensure_ascii=False)
-
-        return result_json, "", 0
-
-    except Exception as e:
-        return "", str(e), 1
-
-
 def call_langchain_env(script_name, query, uri, user, password):
     """调用 LangChain 环境中的脚本处理查询"""
     try:
