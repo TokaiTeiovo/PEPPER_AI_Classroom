@@ -164,12 +164,12 @@ def main():
     setup_directories()
 
     # 检查模型和数据库
-    model_available = check_model_availability()
+    #model_available = check_model_availability()
     neo4j_available = check_neo4j_availability()
 
     if args.check_only:
         logger.info("系统环境检查完成")
-        logger.info(f"  模型可用: {'✓' if model_available else '✗'}")
+        #logger.info(f"  模型可用: {'✓' if model_available else '✗'}")
         logger.info(f"  Neo4j可用: {'✓' if neo4j_available else '✗'}")
         return 0
 

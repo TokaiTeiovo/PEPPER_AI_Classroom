@@ -12,7 +12,6 @@ from ai_service.multimodal.speech_recognition import SpeechRecognizer
 from ai_service.multimodal.image_recognition import ImageRecognizer
 from ai_service.multimodal.text_processor import TextProcessor
 from ai_service.knowledge_graph.knowledge_graph import KnowledgeGraph
-from ai_service.llm_module.llm_interface import LLMService
 from ai_service.llm_module.langchain_integration import LangChainIntegration
 
 app = Flask(__name__)
@@ -23,7 +22,7 @@ speech_recognizer = SpeechRecognizer()
 image_recognizer = ImageRecognizer()
 text_processor = TextProcessor()
 knowledge_graph = KnowledgeGraph()
-llm_service = LLMService()
+#llm_service = LLMService()
 langchain = LangChainIntegration()
 
 

@@ -23,19 +23,13 @@ from ai_service.knowledge_graph.knowledge_graph import KnowledgeGraph
 from ai_service.knowledge_graph.education_knowledge_processor import EducationKnowledgeProcessor
 
 # 导入大语言模型模块
-from ai_service.llm_module.llm_interface import LLMService
 
 # 导入个性化教学模块
 from ai_service.teaching_module.personalized_teaching import PersonalizedTeaching
 
-# 导入PEPPER机器人控制模块
-from pepper_robot.robot_control.robot_controller import PepperRobot
-from pepper_robot.motion_module.gestures import PepperGestures
-from pepper_robot.sensor_module.sensor_handler import PepperSensors
 # 导入通信桥接模块
 from interface.bridge.websocket_client import WebSocketClient
 
-from env_caller import call_langchain_env
 
 
 # 配置日志
@@ -126,7 +120,7 @@ class PepperIntegratedSystem:
             # 初始化大语言模型模块
             logger.info("正在初始化大语言模型模块...")
             llm_config = self.config["llm"]
-            self.llm_service = LLMService(llm_config["model_path"])
+            #self.llm_service = LLMService(llm_config["model_path"])
 
             # 初始化个性化教学模块
             logger.info("正在初始化个性化教学模块...")

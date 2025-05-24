@@ -7,8 +7,8 @@ LoRA微调模块 - 用于PEPPER机器人教学系统的大语言模型微调
 
 import logging
 import os
+from datetime import datetime
 
-import pandas as pd
 import torch
 from datasets import Dataset
 from peft import (
@@ -38,13 +38,21 @@ class LoRAFineTuner:
     def __init__(
             self,
             base_model_path="models/deepseek-coder-1.3b-base",
-            output_dir="models/deepseek-finetuned",
+            output_dir=None,
             lora_r=16,
             lora_alpha=32,
             lora_dropout=0.05
     ):
         """初始化LoRA微调器"""
         self.base_model_path = base_model_path
+
+        # 如果没有指定输出目录，使用时间戳生成
+        if output_dir is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.output_dir = f"models/deepseek-{timestamp}"
+        else:
+            self.output_dir = output_dir
+
         self.output_dir = output_dir
         self.lora_r = lora_r
         self.lora_alpha = lora_alpha
@@ -146,79 +154,59 @@ class LoRAFineTuner:
     def prepare_dataset(self, data_path=None, instruction_data=None):
         """
         准备训练数据集
-
-        可以从文件加载数据，或直接传入指令数据
-        数据格式应为[{"instruction": "...", "input": "...", "output": "..."}]
+        支持从 JSON 或 CSV 读取 [{instruction, input, output}] 格式
         """
         if data_path and os.path.exists(data_path):
-            # 从文件加载数据
             if data_path.endswith('.json'):
                 import json
                 with open(data_path, 'r', encoding='utf-8') as f:
                     instruction_data = json.load(f)
             elif data_path.endswith('.csv'):
+                import pandas as pd
                 instruction_data = pd.read_csv(data_path).to_dict('records')
 
         if not instruction_data:
-            # 如果没有提供数据，创建一个简单的教育领域示例数据集
+            # 示例数据
             instruction_data = [
                 {
                     "instruction": "解释Python中for循环和while循环的区别",
                     "input": "",
-                    "output": "在Python中，for循环和while循环是两种不同的循环结构。for循环用于遍历一个已知的序列（如列表、元组、字符串等），它在每次迭代时会自动获取序列中的下一个元素，直到遍历完所有元素。而while循环则是在指定条件为真时重复执行代码块，需要手动更新循环变量，适合在不确定迭代次数的情况下使用。"
-                },
-                {
-                    "instruction": "什么是人工智能在教育中的应用",
-                    "input": "",
-                    "output": "人工智能在教育中的应用多种多样，包括：个性化学习系统，根据学生的学习进度和能力提供定制化的学习内容；智能辅导系统，能够回答学生的问题并提供即时反馈；自动评分系统，对作业和考试进行自动评分；教育数据分析，帮助教师了解学生的学习行为和模式；智能机器人助教，如PEPPER机器人，可以在课堂上辅助教学，提供互动体验。这些应用共同目标是提高教学效率和学习效果，为教师和学生提供更好的教育体验。"
-                },
-                {
-                    "instruction": "解释什么是多模态交互",
-                    "input": "",
-                    "output": "多模态交互是指人机交互系统能够通过多种感知通道（或称模态）与用户进行交流的能力。这些模态包括视觉（如图像识别、手势识别）、听觉（如语音识别、声音识别）、触觉等。在PEPPER机器人的教学应用中，多模态交互指的是机器人能够通过摄像头识别学生的表情和动作，通过麦克风接收语音指令，并通过语音合成和肢体动作做出回应。这种多模态交互使机器人能够更自然地与学生互动，提供更丰富的教学体验。"
+                    "output": "for循环用于遍历序列，while用于条件循环。"
                 },
                 {
                     "instruction": "PEPPER机器人在课堂上有哪些优势",
                     "input": "",
-                    "output": "PEPPER机器人在'人工智能+'课堂上具有多方面优势：首先，它拥有物理实体，与纯软件AI相比能提供更直观、生动的互动体验；其次，多模态交互能力（语音、视觉、触摸）使其能适应多样化的教学需求；第三，它能收集和分析学生的学习数据，提供个性化的学习建议；第四，拟人化的外形和动作有助于增强学生的学习兴趣和参与度；最后，它能承担部分教学任务，如知识点讲解、答疑等，为教师减轻负担。这些优势使PEPPER机器人成为'人工智能+'课堂的理想辅助工具。"
+                    "output": "互动性强，具备视觉语音交互，提升教学效率。"
                 }
             ]
 
         logger.info(f"准备训练数据集，共{len(instruction_data)}条记录")
 
-        # 处理数据格式，转换为模型训练所需的格式
+        # 转换为 prompt + response 格式
         def format_instruction(example):
-            """将指令数据格式化为训练格式"""
             instruction = example["instruction"]
             input_text = example.get("input", "")
             output = example["output"]
+            prompt = f"Human: {instruction}\n{input_text}\n\nAssistant: " if input_text else f"Human: {instruction}\n\nAssistant: "
+            full_text = prompt + output
+            return {"text": full_text}
 
-            # 格式化为适合DeepSeek模型的指令格式
-            if input_text:
-                prompt = f"Human: {instruction}\n{input_text}\n\nAssistant: "
-            else:
-                prompt = f"Human: {instruction}\n\nAssistant: "
-
-            text = prompt + output
-            return {"text": text}
-
-        # 格式化数据
         formatted_data = [format_instruction(item) for item in instruction_data]
+        raw_dataset = Dataset.from_list(formatted_data)
 
-        # 创建Dataset对象
-        dataset = Dataset.from_pandas(pd.DataFrame(formatted_data))
-
-        # 数据集预处理：分词
+        # 分词 + 添加 labels，并删除原始text字段
         def tokenize_function(examples):
-            """对文本进行分词"""
-            return self.tokenizer(
+            tokens = self.tokenizer(
                 examples["text"],
                 padding="max_length",
                 truncation=True,
                 max_length=1024
             )
+            tokens["labels"] = tokens["input_ids"].copy()
+            return tokens
 
-        tokenized_dataset = dataset.map(tokenize_function, batched=True)
+        tokenized_dataset = raw_dataset.map(tokenize_function, batched=False)
+        tokenized_dataset = tokenized_dataset.remove_columns(["text"])  # 删除text字段，避免转换tensor时报错
 
         return tokenized_dataset
 

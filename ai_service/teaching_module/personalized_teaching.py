@@ -11,7 +11,6 @@ import os
 from datetime import datetime
 
 from ai_service.knowledge_graph.knowledge_graph import KnowledgeGraph
-from ai_service.llm_module.llm_interface import LLMService
 
 # 配置日志
 logging.basicConfig(
@@ -315,7 +314,7 @@ class PersonalizedTeaching:
     def __init__(self, kg_uri="bolt://localhost:7687", kg_user="neo4j", kg_password="password"):
         """初始化个性化教学模块"""
         self.knowledge_graph = KnowledgeGraph(kg_uri, kg_user, kg_password)
-        self.llm_service = LLMService()
+        #self.llm_service = LLMService()
         self.student_profiles = {}  # 学生档案字典，学生ID为键
         self.learning_resources = self._load_learning_resources()
         logger.info("个性化教学模块初始化完成")

@@ -4,6 +4,7 @@ import argparse
 import logging
 import os
 import sys
+from datetime import datetime
 
 sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
@@ -22,8 +23,8 @@ def main():
     parser = argparse.ArgumentParser(description='使用LoRA技术微调大语言模型')
     parser.add_argument('--model_path', type=str, default="models/deepseek-coder-1.3b-base",
                         help='基础模型路径')
-    parser.add_argument('--output_dir', type=str, default="models/deepseek-finetuned",
-                        help='微调后模型输出路径')
+    parser.add_argument('--output_dir', type=str, default=None,
+                        help='微调后模型输出路径（不指定则自动生成时间戳）')
     parser.add_argument('--data_path', type=str, default=None,
                         help='训练数据路径（JSON或CSV格式）')
     parser.add_argument('--epochs', type=int, default=3,
@@ -32,6 +33,11 @@ def main():
                         help='批次大小')
 
     args = parser.parse_args()
+
+    # 如果没有指定输出目录，自动生成带时间戳的目录
+    if args.output_dir is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        args.output_dir = f"models/deepseek-{timestamp}"
 
     # 创建输出目录
     os.makedirs(args.output_dir, exist_ok=True)
@@ -43,7 +49,6 @@ def main():
     )
 
     # 加载基础模型
-    logger.info(f"正在加载基础模型: {args.model_path}")
     if fine_tuner.load_base_model():
         # 准备LoRA配置
         fine_tuner.prepare_lora_config()
