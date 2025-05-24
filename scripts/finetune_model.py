@@ -3,6 +3,9 @@
 import argparse
 import logging
 import os
+import sys
+
+sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
 
 from ai_service.llm_module.lora_fine_tuning import LoRAFineTuner
 

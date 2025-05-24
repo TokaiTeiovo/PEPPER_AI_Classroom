@@ -97,6 +97,30 @@ class LoRAFineTuner:
         """准备LoRA配置"""
         logger.info("配置LoRA参数")
 
+        # 为DeepSeek模型获取正确的目标模块
+        if hasattr(self.model, "config") and hasattr(self.model.config,
+                                                     "model_type") and self.model.config.model_type == "deepseek":
+            # DeepSeek模型的特定模块
+            target_modules = ["k_proj", "q_proj", "v_proj", "out_proj", "fc1", "fc2"]
+        else:
+            # 查找模型中包含的层
+            import re
+            target_modules = []
+            for name, _ in self.model.named_modules():
+                if any(re.search(pattern, name) for pattern in ["attention", "mlp", "dense", "linear"]):
+                    parts = name.split('.')
+                    if len(parts) > 1 and parts[-1] in ["query", "key", "value", "out_proj", "fc1", "fc2", "up_proj",
+                                                        "down_proj", "gate_proj"]:
+                        target_modules.append(parts[-1])
+
+            # 如果没有找到任何目标模块，使用默认值
+            if not target_modules:
+                target_modules = ["query", "key", "value", "out_proj", "fc1", "fc2"]
+
+            # 去重
+            target_modules = list(set(target_modules))
+            logger.info(f"自动检测到的目标模块: {target_modules}")
+
         # 定义LoRA配置
         peft_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
@@ -104,7 +128,7 @@ class LoRAFineTuner:
             r=self.lora_r,
             lora_alpha=self.lora_alpha,
             lora_dropout=self.lora_dropout,
-            target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"]
+            target_modules=target_modules
         )
 
         # 为量化训练准备模型（如果使用8bit）
