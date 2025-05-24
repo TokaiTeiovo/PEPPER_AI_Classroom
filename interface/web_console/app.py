@@ -60,7 +60,7 @@ root_logger.addHandler(WebLogHandler())
 @app.route('/')
 def index():
     """主页"""
-    return render_template('index.html')
+    return render_template('index.html.bak2.bak.bak')
 
 
 @app.route('/api/status')

@@ -102,6 +102,8 @@ def load_model():
         model_path = data.get('model_path', '')
         use_4bit = data.get('use_4bit', True)  # 默认使用4bit量化
         use_8bit = data.get('use_8bit', False)
+        use_lora = data.get("use_lora", False)
+        lora_path = data.get("lora_path", None)
         logger.info(f"正在加载模型: {model_path}")
 
         # 修复：检查model_path是否为空
@@ -315,6 +317,7 @@ def start_finetuning():
             })
 
         file = request.files['training_data']
+        model_path = request.form.get('model_path', '')
         epochs = int(request.form.get('epochs', 3))
         learning_rate = float(request.form.get('learning_rate', 0.0002))
         batch_size = int(request.form.get('batch_size', 2))  # 4bit训练默认batch_size=2
@@ -327,6 +330,19 @@ def start_finetuning():
                 "message": "未选择文件"
             })
 
+        if not model_path or model_path.strip() == '':
+            return jsonify({
+                "status": "error",
+                "message": "未指定模型路径"
+            })
+
+        # 检查模型路径是否存在
+        if not os.path.exists(model_path):
+            return jsonify({
+                "status": "error",
+                "message": f"模型路径不存在: {model_path}"
+            })
+
         # 保存文件
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -337,8 +353,11 @@ def start_finetuning():
         quantization_suffix = "_4bit" if use_4bit else "_8bit" if use_8bit else ""
         output_dir = f"models/deepseek-{timestamp}{quantization_suffix}"
 
-        # 创建微调器
-        services['fine_tuner'] = LoRAFineTuner(output_dir=output_dir)
+        # 创建微调器，使用指定的模型路径
+        services['fine_tuner'] = LoRAFineTuner(
+            base_model_path=model_path,  # 使用前端传递的模型路径
+            output_dir=output_dir
+        )
 
         # 记录训练信息到系统状态
         system_status['training_output_dir'] = output_dir
@@ -346,6 +365,7 @@ def start_finetuning():
         system_status['training_active'] = True
         system_status['training_progress'] = 0
         system_status['training_config'] = {
+            'model_path': model_path,
             'epochs': epochs,
             'batch_size': batch_size,
             'learning_rate': learning_rate,
@@ -365,13 +385,21 @@ def start_finetuning():
                 if not success:
                     system_status['training_active'] = False
                     system_status['training_error'] = "模型加载失败"
+                    logger.error("模型加载失败")
                     return
 
+                logger.info("模型加载成功，准备LoRA配置")
                 # 准备LoRA配置
                 services['fine_tuner'].prepare_lora_config()
 
+                logger.info("准备数据集")
                 # 准备数据集
                 dataset = services['fine_tuner'].prepare_dataset(data_path=filepath)
+                if dataset is None:
+                    system_status['training_active'] = False
+                    system_status['training_error'] = "数据集准备失败"
+                    logger.error("数据集准备失败")
+                    return
 
                 # 开始训练
                 system_status['training_progress'] = 10
@@ -388,6 +416,7 @@ def start_finetuning():
                     logger.info(f"4bit量化训练完成，模型已保存到: {output_dir}")
                 else:
                     system_status['training_error'] = "训练过程失败"
+                    logger.error("训练过程失败")
 
             except Exception as e:
                 logger.error(f"训练过程出错: {e}")

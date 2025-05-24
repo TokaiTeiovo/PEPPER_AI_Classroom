@@ -1,8 +1,4 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title><!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -415,7 +411,7 @@
             <div class="grid-2">
                 <div class="panel">
                     <h2>📁 模型选择与管理</h2>
-                    
+
                     <!-- 模型发现和选择 -->
                     <div class="form-group">
                         <label>选择基础模型</label>
@@ -447,7 +443,7 @@
 
                         <!-- 手动输入模式 -->
                         <div id="manual-model-section" style="display: none;">
-                            <input type="text" id="model-path" 
+                            <input type="text" id="model-path"
                                    value="models/deepseek-coder-1.3b-base"
                                    placeholder="输入模型路径，例如：models/deepseek-coder-1.3b-base">
                         </div>
@@ -470,7 +466,7 @@
                     </div>
 
                     <h2>⚙️ 量化训练配置</h2>
-                    
+
                     <!-- 量化配置部分 -->
                     <div class="form-group">
                         <label>量化设置</label>
@@ -514,12 +510,12 @@
 
                 <div class="panel">
                     <h2>🎯 LoRA训练参数</h2>
-                    
+
                     <div class="form-group">
                         <label>训练数据文件</label>
-                        <div class="file-upload" id="file-upload-area">
+                        <div class="file-upload" onclick="document.getElementById('training-data').click()">
                             <input type="file" id="training-data" accept=".json,.csv" style="display: none;">
-                            <p id="upload-text">📤 点击上传训练数据</p>
+                            <p>📤 点击上传训练数据</p>
                             <small>支持JSON/CSV格式的指令数据</small>
                         </div>
                     </div>
@@ -581,7 +577,7 @@
             <div class="grid-2">
                 <div class="panel">
                     <h2>🤖 模型加载管理</h2>
-                    
+
                     <div class="form-group">
                         <label>模型状态</label>
                         <div class="status-indicator status-offline" id="model-status">
@@ -602,7 +598,7 @@
                     </div>
 
                     <h2>🗄️ Neo4j知识图谱</h2>
-                    
+
                     <div class="form-group">
                         <label>数据库连接状态</label>
                         <div class="status-indicator status-offline" id="neo4j-status">
@@ -648,13 +644,13 @@
 
                 <div class="panel">
                     <h2>💬 智能对话</h2>
-                    
+
                     <div class="chat-container" id="chat-messages">
                         <div class="chat-message chat-assistant">
                             <strong>🤖 PEPPER:</strong> 你好！我是基于DeepSeek和Neo4j知识图谱的AI教学助手。请先加载模型和连接知识图谱，然后就可以开始对话了！
                         </div>
                     </div>
-                    
+
                     <div class="form-group" style="display: flex; gap: 10px; margin-top: 20px;">
                         <textarea id="chat-input" rows="3" placeholder="输入你的问题..." style="flex: 1; resize: vertical;"></textarea>
                         <button onclick="sendMessage()" style="width: 100px; height: fit-content;">💬 发送</button>
@@ -947,15 +943,14 @@
         // 开始LoRA微调
         async function startFineTuning() {
             logMessage('info', '开始LoRA微调函数被调用');
-            
-            // 先检查元素是否存在
-            /* const fileInput = document.getElementById('training-data');
+
+            const fileInput = document.getElementById('training-data');
             if (!fileInput) {
                 logMessage('error', '找不到training-data元素');
                 alert('页面元素错误，请刷新页面重试');
                 return;
-            } */
-            
+            }
+
             if (!fileInput.files || !fileInput.files[0]) {
                 alert('请先上传训练数据');
                 logMessage('error', '没有选择训练数据文件');
@@ -995,7 +990,6 @@
                 return;
             }
 
-            // 检查量化选项
             const quantizationRadio = document.querySelector('input[name="quantization"]:checked');
             if (!quantizationRadio) {
                 alert('请选择量化选项');
@@ -1003,8 +997,6 @@
                 return;
             }
             const quantization = quantizationRadio.value;
-
-            // 获取训练参数
             const epochsInput = document.getElementById('epochs');
             const batchSizeInput = document.getElementById('batch-size');
             const learningRateInput = document.getElementById('learning-rate');
@@ -1042,45 +1034,39 @@
             try {
                 logMessage('info', '正在发送API请求...');
                 const result = await callAPI('start_finetuning', 'POST', formData);
-                
+
                 logMessage('info', `API响应: ${JSON.stringify(result)}`);
 
                 if (result.status === 'success') {
                     currentTrainingConfig = result.config || {};
-                    logMessage('info', `${quantization}量化微调已开始，模型将保存到: ${result.output_dir || '未知路径'}`);
+                    logMessage('info', `${quantization}量化微调已开始，模型将保存到: ${result.output_dir} || '未知路径'}`);
 
                     // 显示训练详细信息
                     const detailsDiv = document.getElementById('training-details');
                     if (detailsDiv) {
                         detailsDiv.style.display = 'block';
-                        
+
                         const quantizationSpan = document.getElementById('training-quantization');
                         const batchSizeSpan = document.getElementById('training-batch-size');
-                        
+
                         if (quantizationSpan) quantizationSpan.textContent = (result.config && result.config.quantization) || quantization;
                         if (batchSizeSpan) batchSizeSpan.textContent = (result.config && result.config.batch_size) || batchSize;
                     }
-
                     // 开始更新进度
                     logMessage('info', '开始监控训练进度');
                     updateTrainingProgress();
-                    
-                    alert('训练已开始！请查看系统日志了解详细进度。');
                 } else {
-                    logMessage('error', `微调启动失败: ${result.message || '未知错误'}`);
+                    logMessage('error', `微调启动失败: ${result.message}`);
                     alert('微调启动失败: ' + (result.message || JSON.stringify(result)));
                 }
             } catch (error) {
                 logMessage('error', `微调启动出错: ${error.message}`);
                 console.error('微调启动详细错误:', error);
-                alert('微调启动出错: ' + error.message + '\n请检查控制台和系统日志了解详情');
+                alert('微调启动出错: ' + error.message);
             } finally {
-                // 延迟恢复按钮状态，避免用户重复点击
                 setTimeout(() => {
-                    if (startBtn) {
-                        startBtn.disabled = false;
-                        startBtn.textContent = '🚀 开始LoRA微调';
-                    }
+                    startBtn.disabled = false;
+                    startBtn.textContent = '🚀 开始LoRA微调';
                 }, 2000);
             }
         }
@@ -1131,7 +1117,7 @@
         // 加载聊天模型
         async function loadChatModel() {
             const modelPath = document.getElementById('chat-model-selector').value;
-            
+
             if (!modelPath) {
                 alert('请选择要加载的模型');
                 return;
@@ -1351,7 +1337,7 @@
             ];
 
             const randomQuestion = testQuestions[Math.floor(Math.random() * testQuestions.length)];
-            
+
             document.getElementById('chat-input').value = randomQuestion;
             sendMessage();
         }
@@ -1389,129 +1375,61 @@
         // 事件监听器设置
         function setupEventListeners() {
             // 参数滑块更新
-            const temperatureSlider = document.getElementById('temperature');
-            if (temperatureSlider) {
-                temperatureSlider.addEventListener('input', function(e) {
-                    const tempValueSpan = document.getElementById('temp-value');
-                    if (tempValueSpan) {
-                        tempValueSpan.textContent = e.target.value;
-                    }
-                });
-            }
+            document.getElementById('temperature').addEventListener('input', function(e) {
+                document.getElementById('temp-value').textContent = e.target.value;
+            });
 
             // 回车发送消息
-            const chatInput = document.getElementById('chat-input');
-            if (chatInput) {
-                chatInput.addEventListener('keypress', function(e) {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        sendMessage();
-                    }
-                });
-            }
+            document.getElementById('chat-input').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
 
             // 监听参数变化，更新预计时间
-            const epochsInput = document.getElementById('epochs');
-            const batchSizeInput = document.getElementById('batch-size'); 
-            
-            if (epochsInput) {
-                epochsInput.addEventListener('change', updateEstimatedTime);
-            }
-            if (batchSizeInput) {
-                batchSizeInput.addEventListener('change', updateEstimatedTime);
-            }
-            
+            document.getElementById('epochs').addEventListener('change', updateEstimatedTime);
+            document.getElementById('batch-size').addEventListener('change', updateEstimatedTime);
             document.querySelectorAll('input[name="quantization"]').forEach(radio => {
                 radio.addEventListener('change', updateEstimatedTime);
             });
 
             // 文件上传显示
-            const trainingDataInput = document.getElementById('training-data');
-            if (trainingDataInput) {
-                trainingDataInput.addEventListener('change', function(e) {
-                    logMessage('info', '文件上传事件触发');
-                    const file = e.target.files[0];
-                    if (file) {
-                        const uploadDiv = document.querySelector('.file-upload');
-                        if (uploadDiv) {
-                            uploadDiv.innerHTML = `
-                                <p>✅ 已选择文件: ${file.name}</p>
-                                <small>大小: ${(file.size / 1024).toFixed(2)} KB</small>
-                            `;
-                            uploadDiv.style.borderColor = '#2ed573';
-                            uploadDiv.style.background = 'rgba(46, 213, 115, 0.1)';
-                            logMessage('info', `已选择训练数据文件: ${file.name} (${file.size} bytes)`);
-                        }
-                    }
-                });
-            } else {
-                logMessage('error', '找不到training-data元素，文件上传功能可能无法正常工作');
-            }
-
-            // 添加文件上传区域点击事件
-            const fileUploadDiv = document.querySelector('.file-upload');
-            if (fileUploadDiv && trainingDataInput) {
-                fileUploadDiv.addEventListener('click', function() {
-                    trainingDataInput.click();
-                });
-            }
+            document.getElementById('training-data').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const uploadDiv = document.querySelector('.file-upload');
+                    uploadDiv.innerHTML = `
+                        <p>✅ 已选择文件: ${file.name}</p>
+                        <small>大小: ${(file.size / 1024).toFixed(2)} KB</small>
+                    `;
+                    uploadDiv.style.borderColor = '#2ed573';
+                    uploadDiv.style.background = 'rgba(46, 213, 115, 0.1)';
+                    logMessage('info', `已选择训练数据文件: ${file.name}`);
+                }
+            });
         }
 
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
             logMessage('info', 'PEPPER智能教学系统界面加载完成');
-            
-            // 检查关键元素是否存在
-            const criticalElements = [
-                'training-data',
-                'model-selector', 
-                'model-path',
-                'epochs',
-                'batch-size',
-                'learning-rate',
-                'start-training-btn'
-            ];
-            
-            let missingElements = [];
-            criticalElements.forEach(id => {
-                if (!document.getElementById(id)) {
-                    missingElements.push(id);
-                }
-            });
-            
-            if (missingElements.length > 0) {
-                logMessage('error', `缺少关键元素: ${missingElements.join(', ')}`);
-                alert(`页面加载不完整，缺少元素: ${missingElements.join(', ')}\n请刷新页面重试`);
-                return;
-            }
-            
-            logMessage('info', '所有关键元素检查通过');
-            
+
             // 设置事件监听器
             setupEventListeners();
-            
+
             // 自动扫描模型
             setTimeout(() => {
-                logMessage('info', '开始自动扫描模型');
                 discoverModels();
             }, 2000);
 
             // 检查量化支持
             setTimeout(() => {
-                logMessage('info', '检查量化支持');
                 checkQuantizationSupport();
             }, 1000);
 
             // 更新预计训练时间
             updateEstimatedTime();
-            
-            logMessage('info', '系统初始化完成');
         });
     </script>
-</body>
-</html></title>
-</head>
-<body>
-
 </body>
 </html>
