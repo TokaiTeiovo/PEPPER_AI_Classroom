@@ -4,7 +4,7 @@
 PEPPER智能教学系统 - 增强API服务器
 支持大语言模型、知识图谱、多模态交互、智能教学四大功能模块
 """
-
+import json
 import logging
 import os
 import sys
@@ -1041,6 +1041,209 @@ def export_report():
         })
 
 
+@app.route('/api/discover_models', methods=['GET'])
+def discover_models():
+    """发现可用的模型"""
+    try:
+        models_dir = 'models'
+        available_models = []
+
+        # 检查models目录是否存在
+        if not os.path.exists(models_dir):
+            os.makedirs(models_dir, exist_ok=True)
+            logger.info("创建了models目录")
+
+        # 遍历models目录
+        for item in os.listdir(models_dir):
+            item_path = os.path.join(models_dir, item)
+
+            # 只处理文件夹
+            if os.path.isdir(item_path):
+                model_info = {
+                    "name": item,
+                    "path": item_path,
+                    "display_name": item,
+                    "valid": False,
+                    "size": 0,
+                    "files": []
+                }
+
+                # 检查是否是有效的模型目录
+                model_files = []
+                total_size = 0
+
+                try:
+                    for root, dirs, files in os.walk(item_path):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            file_size = os.path.getsize(file_path)
+                            total_size += file_size
+
+                            # 检查关键模型文件
+                            if file.endswith(('.bin', '.safetensors', '.pt', '.pth', '.ckpt')):
+                                model_files.append({
+                                    "name": file,
+                                    "size": file_size,
+                                    "type": "model"
+                                })
+                            elif file in ['config.json', 'tokenizer.json', 'tokenizer_config.json']:
+                                model_files.append({
+                                    "name": file,
+                                    "size": file_size,
+                                    "type": "config"
+                                })
+                            elif file in ['vocab.txt', 'merges.txt', 'special_tokens_map.json']:
+                                model_files.append({
+                                    "name": file,
+                                    "size": file_size,
+                                    "type": "tokenizer"
+                                })
+
+                except Exception as e:
+                    logger.warning(f"扫描模型目录 {item_path} 时出错: {e}")
+                    continue
+
+                # 判断是否为有效模型
+                has_model_file = any(f['type'] == 'model' for f in model_files)
+                has_config = any(f['type'] == 'config' for f in model_files)
+
+                if has_model_file or has_config:
+                    model_info["valid"] = True
+
+                model_info["size"] = total_size
+                model_info["files"] = model_files
+
+                # 生成更友好的显示名称
+                if "deepseek" in item.lower():
+                    model_info["display_name"] = f"🧠 DeepSeek - {item}"
+                elif "chatglm" in item.lower():
+                    model_info["display_name"] = f"💬 ChatGLM - {item}"
+                elif "qwen" in item.lower():
+                    model_info["display_name"] = f"🔮 Qwen - {item}"
+                elif "llama" in item.lower():
+                    model_info["display_name"] = f"🦙 LLaMA - {item}"
+                else:
+                    model_info["display_name"] = f"🤖 {item}"
+
+                available_models.append(model_info)
+
+        # 按有效性和名称排序
+        available_models.sort(key=lambda x: (not x["valid"], x["name"]))
+
+        logger.info(f"发现 {len(available_models)} 个模型目录")
+
+        return jsonify({
+            "status": "success",
+            "models": available_models,
+            "count": len(available_models)
+        })
+
+    except Exception as e:
+        logger.error(f"模型发现失败: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        })
+
+
+@app.route('/api/get_model_info', methods=['POST'])
+def get_model_info():
+    """获取特定模型的详细信息"""
+    try:
+        data = request.json
+        model_path = data.get('model_path', '')
+
+        if not model_path or not os.path.exists(model_path):
+            return jsonify({
+                "status": "error",
+                "message": "模型路径不存在"
+            })
+
+        model_info = {
+            "path": model_path,
+            "name": os.path.basename(model_path),
+            "files": [],
+            "total_size": 0,
+            "model_files_count": 0,
+            "config_files": [],
+            "tokenizer_files": []
+        }
+
+        # 扫描模型文件
+        for root, dirs, files in os.walk(model_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                try:
+                    file_size = os.path.getsize(file_path)
+                    model_info["total_size"] += file_size
+
+                    relative_path = os.path.relpath(file_path, model_path)
+
+                    file_info = {
+                        "name": file,
+                        "path": relative_path,
+                        "size": file_size,
+                        "size_mb": round(file_size / (1024 * 1024), 2)
+                    }
+
+                    if file.endswith(('.bin', '.safetensors', '.pt', '.pth', '.ckpt')):
+                        file_info["type"] = "model"
+                        model_info["model_files_count"] += 1
+                    elif file == 'config.json':
+                        file_info["type"] = "config"
+                        model_info["config_files"].append(file_info)
+
+                        # 尝试读取配置信息
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                config = json.load(f)
+                                model_info["model_type"] = config.get("model_type", "unknown")
+                                model_info["architectures"] = config.get("architectures", [])
+                                model_info["vocab_size"] = config.get("vocab_size", 0)
+                        except:
+                            pass
+                    elif file in ['tokenizer.json', 'tokenizer_config.json', 'vocab.txt', 'merges.txt']:
+                        file_info["type"] = "tokenizer"
+                        model_info["tokenizer_files"].append(file_info)
+                    else:
+                        file_info["type"] = "other"
+
+                    model_info["files"].append(file_info)
+
+                except Exception as e:
+                    logger.warning(f"无法获取文件信息 {file_path}: {e}")
+                    continue
+
+        # 转换总大小为可读格式
+        total_size_mb = model_info["total_size"] / (1024 * 1024)
+        if total_size_mb > 1024:
+            model_info["total_size_display"] = f"{total_size_mb / 1024:.1f} GB"
+        else:
+            model_info["total_size_display"] = f"{total_size_mb:.1f} MB"
+
+        return jsonify({
+            "status": "success",
+            "model_info": model_info
+        })
+
+    except Exception as e:
+        logger.error(f"获取模型信息失败: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        })
+
+def format_file_size(size_bytes):
+    """格式化文件大小"""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    elif size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+    else:
+        return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
+
 @app.route('/download_report/<filename>')
 def download_report(filename):
     """下载报告文件"""
@@ -1091,239 +1294,7 @@ def index():
                 html_content = f.read()
             return html_content
         else:
-            # 返回简单的HTML页面
-            return """
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="UTF-8">
-                <title>PEPPER智能教学系统</title>
-                <style>
-                    body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-                    .container { max-width: 800px; margin: 0 auto; }
-                    .header { background: #4a86e8; color: white; padding: 20px; border-radius: 5px; text-align: center; margin-bottom: 20px; }
-                    .panel { background: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
-                    button { background: #4a86e8; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
-                    input, textarea { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-                    .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
-                    .status.success { background: #d4edcf; color: #2ed573; }
-                    .status.error { background: #ffd3d8; color: #ff4757; }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="header">
-                        <h1>🤖 PEPPER智能教学系统</h1>
-                        <p>基于DeepSeek模型的个性化AI教学助手</p>
-                    </div>
-
-                    <div class="panel">
-                        <h2>🧠 大语言模型测试</h2>
-                        <div id="model-status" class="status">模型未加载</div>
-                        <button onclick="loadModel()">加载模型</button>
-                        <button onclick="testModel()">测试模型</button>
-                        <div style="margin: 20px 0;">
-                            <textarea id="test-question" rows="3" placeholder="输入测试问题，例如：什么是Python循环？"></textarea>
-                            <div id="model-response" style="background: #f8f9ff; padding: 15px; border-radius: 4px; min-height: 100px; margin-top: 10px;">
-                                等待测试...
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="panel">
-                        <h2>🗂️ 知识图谱</h2>
-                        <div id="neo4j-status" class="status">数据库未连接</div>
-                        <button onclick="connectNeo4j()">连接Neo4j</button>
-                        <button onclick="generateSampleKnowledge()">生成示例知识</button>
-                    </div>
-
-                    <div class="panel">
-                        <h2>🎯 文本处理</h2>
-                        <textarea id="text-input" rows="3" placeholder="输入要处理的文本..."></textarea>
-                        <button onclick="processText()">处理文本</button>
-                        <div id="text-result" style="background: #f8f9ff; padding: 15px; border-radius: 4px; margin-top: 10px; min-height: 80px;">
-                            等待处理...
-                        </div>
-                    </div>
-
-                    <div class="panel">
-                        <h2>📚 智能对话</h2>
-                        <div id="chat-container" style="border: 1px solid #ddd; height: 300px; overflow-y: auto; padding: 10px; background: #fafafa; margin-bottom: 10px;">
-                            <div style="background: #f0f0f0; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
-                                <strong>PEPPER:</strong> 你好！我是你的AI教学助手，有什么问题吗？
-                            </div>
-                        </div>
-                        <div style="display: flex; gap: 10px;">
-                            <textarea id="chat-input" rows="2" placeholder="输入你的问题..." style="flex: 1;"></textarea>
-                            <button onclick="sendMessage()" style="width: 80px;">发送</button>
-                        </div>
-                    </div>
-                </div>
-
-                <script>
-                    // API调用函数
-                    async function callAPI(endpoint, method = 'GET', data = null) {
-                        try {
-                            const options = { method, headers: { 'Content-Type': 'application/json' } };
-                            if (data) options.body = JSON.stringify(data);
-                            const response = await fetch('/api/' + endpoint, options);
-                            return await response.json();
-                        } catch (error) {
-                            return { status: 'error', message: '网络错误: ' + error.message };
-                        }
-                    }
-
-                    // 更新状态显示
-                    function updateStatus(elementId, message, isSuccess = false) {
-                        const element = document.getElementById(elementId);
-                        element.textContent = message;
-                        element.className = isSuccess ? 'status success' : 'status error';
-                    }
-
-                    // 加载模型
-                    async function loadModel() {
-                        updateStatus('model-status', '正在加载模型...');
-                        const result = await callAPI('load_model', 'POST', { 
-                            model_path: 'models/deepseek-coder-1.3b-base' 
-                        });
-
-                        if (result.status === 'success') {
-                            updateStatus('model-status', '✅ 模型已加载', true);
-                        } else {
-                            updateStatus('model-status', '❌ 模型加载失败: ' + result.message);
-                        }
-                    }
-
-                    // 测试模型
-                    async function testModel() {
-                        const question = document.getElementById('test-question').value;
-                        if (!question.trim()) {
-                            alert('请输入测试问题');
-                            return;
-                        }
-
-                        document.getElementById('model-response').textContent = '正在思考...';
-                        const result = await callAPI('test_model', 'POST', { question });
-
-                        if (result.status === 'success') {
-                            document.getElementById('model-response').textContent = result.response;
-                        } else {
-                            document.getElementById('model-response').textContent = '❌ 错误: ' + result.message;
-                        }
-                    }
-
-                    // 连接Neo4j
-                    async function connectNeo4j() {
-                        updateStatus('neo4j-status', '正在连接...');
-                        const result = await callAPI('connect_neo4j', 'POST', {
-                            uri: 'bolt://localhost:7687',
-                            user: 'neo4j',
-                            password: 'admin123'
-                        });
-
-                        if (result.status === 'success') {
-                            updateStatus('neo4j-status', '✅ Neo4j已连接', true);
-                        } else {
-                            updateStatus('neo4j-status', '❌ 连接失败: ' + result.message);
-                        }
-                    }
-
-                    // 生成示例知识
-                    async function generateSampleKnowledge() {
-                        const result = await callAPI('generate_sample_knowledge', 'POST');
-
-                        if (result.status === 'success') {
-                            alert('✅ 示例知识生成成功！共生成 ' + (result.count || 0) + ' 条知识');
-                        } else {
-                            alert('❌ 示例知识生成失败: ' + result.message);
-                        }
-                    }
-
-                    // 处理文本
-                    async function processText() {
-                        const text = document.getElementById('text-input').value;
-                        if (!text.trim()) {
-                            alert('请输入要处理的文本');
-                            return;
-                        }
-
-                        document.getElementById('text-result').textContent = '正在处理...';
-                        const result = await callAPI('process_text', 'POST', { text });
-
-                        if (result.status === 'success') {
-                            document.getElementById('text-result').innerHTML = 
-                                '<strong>分词结果:</strong> ' + result.tokens.join(', ') + '<br>' +
-                                '<strong>关键词:</strong> ' + result.keywords.join(', ') + '<br>' +
-                                '<strong>问题类型:</strong> ' + result.question_type;
-                        } else {
-                            document.getElementById('text-result').textContent = '❌ 错误: ' + result.message;
-                        }
-                    }
-
-                    // 发送消息
-                    async function sendMessage() {
-                        const input = document.getElementById('chat-input');
-                        const message = input.value.trim();
-
-                        if (!message) return;
-
-                        // 添加用户消息
-                        const chatContainer = document.getElementById('chat-container');
-                        const userMsg = document.createElement('div');
-                        userMsg.innerHTML = '<strong>你:</strong> ' + message;
-                        userMsg.style.cssText = 'background: #e3f2fd; padding: 10px; border-radius: 5px; margin-bottom: 10px; text-align: right;';
-                        chatContainer.appendChild(userMsg);
-
-                        input.value = '';
-
-                        // 显示正在思考
-                        const thinkingMsg = document.createElement('div');
-                        thinkingMsg.innerHTML = '<strong>PEPPER:</strong> 正在思考...';
-                        thinkingMsg.style.cssText = 'background: #f0f0f0; padding: 10px; border-radius: 5px; margin-bottom: 10px;';
-                        chatContainer.appendChild(thinkingMsg);
-                        chatContainer.scrollTop = chatContainer.scrollHeight;
-
-                        // 发送到AI助手
-                        const result = await callAPI('chat', 'POST', { message });
-
-                        // 移除思考消息
-                        chatContainer.removeChild(thinkingMsg);
-
-                        // 添加AI回复
-                        const assistantMsg = document.createElement('div');
-                        if (result.status === 'success') {
-                            assistantMsg.innerHTML = '<strong>PEPPER:</strong> ' + result.response;
-                        } else {
-                            assistantMsg.innerHTML = '<strong>PEPPER:</strong> 抱歉，我现在无法回答。错误: ' + result.message;
-                        }
-                        assistantMsg.style.cssText = 'background: #f0f0f0; padding: 10px; border-radius: 5px; margin-bottom: 10px;';
-                        chatContainer.appendChild(assistantMsg);
-                        chatContainer.scrollTop = chatContainer.scrollHeight;
-                    }
-
-                    // 回车发送消息
-                    document.getElementById('chat-input').addEventListener('keypress', function(e) {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            sendMessage();
-                        }
-                    });
-
-                    // 页面加载完成后的初始化
-                    document.addEventListener('DOMContentLoaded', function() {
-                        console.log('PEPPER智能教学系统已加载');
-
-                        // 检查系统状态
-                        callAPI('system_status').then(result => {
-                            if (result.status === 'success') {
-                                console.log('系统状态:', result);
-                            }
-                        });
-                    });
-                </script>
-            </body>
-            </html>
-            """
+            return
     except Exception as e:
         logger.error(f"主页路由出错: {e}")
         return f"<h1>系统错误</h1><p>{str(e)}</p>"

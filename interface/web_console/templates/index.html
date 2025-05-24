@@ -295,13 +295,72 @@
                             ● 模型未加载
                         </div>
                     </div>
+
+                    <!-- 新增：模型发现和选择 -->
                     <div class="form-group">
-                        <label>模型路径</label>
-                        <input type="text" id="model-path" value="models/deepseek-coder-1.3b-base">
+                        <label>模型选择</label>
+
+                        <!-- 模式切换标签 -->
+                        <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: nowrap;">
+                            <label style="display: flex; align-items: center; cursor: pointer; font-weight: normal; white-space: nowrap;">
+                                <input type="radio" name="model-mode" value="auto" checked onchange="toggleModelMode()" style="margin-right: 8px;">
+                                <span>🎯 自动发现</span>
+                            </label>
+                            <label style="display: flex; align-items: center; cursor: pointer; font-weight: normal; white-space: nowrap;">
+                                <input type="radio" name="model-mode" value="manual" onchange="toggleModelMode()" style="margin-right: 8px;">
+                                <span>✏️ 手动输入</span>
+                            </label>
+                        </div>
+
+                        <!-- 自动发现模式 -->
+                        <div id="auto-model-section">
+                            <div class="model-selector-container">
+                                <select id="model-selector" class="model-select">
+                                    <option value="">🔍 选择一个模型...</option>
+                                </select>
+                                <button class="btn-scan" onclick="discoverModels()">
+                                    <span class="scan-icon">🔄</span>
+                                    <span class="scan-text">扫描</span>
+                                </button>
+                            </div>
+                            <div id="model-scan-status" class="scan-status">
+                                点击"扫描"来发现可用的模型
+                            </div>
+                        </div>
+
+                        <!-- 手动输入模式 -->
+                        <div id="manual-model-section" style="display: none;">
+                            <input type="text" id="model-path" class="manual-path-input"
+                                   value="models/deepseek-coder-1.3b-base"
+                                   placeholder="输入模型路径，例如：models/deepseek-coder-1.3b-base">
+                        </div>
                     </div>
+
+                    <!-- 模型详细信息展示 -->
+                    <div id="model-details" style="display: none; background: #f8f9ff; padding: 15px; border-radius: 8px; margin: 10px 0;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <strong>模型信息</strong>
+                                <ul id="model-basic-info" style="margin: 5px 0; padding-left: 20px;">
+                                </ul>
+                            </div>
+                            <div>
+                                <strong>文件统计</strong>
+                                <ul id="model-file-stats" style="margin: 5px 0; padding-left: 20px;">
+                                </ul>
+                            </div>
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <strong>文件列表</strong>
+                            <div id="model-files-list" style="max-height: 150px; overflow-y: auto; background: white; padding: 10px; border-radius: 4px; margin-top: 5px;">
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="form-group">
-                        <button onclick="loadModel()">加载模型</button>
+                        <button onclick="loadModel()" id="load-model-btn">加载模型</button>
                         <button class="btn-secondary" onclick="unloadModel()">卸载模型</button>
+                        <button class="btn-secondary" onclick="showModelInfo()" id="info-model-btn">模型信息</button>
                     </div>
 
                     <h2>LoRA微调</h2>
@@ -648,6 +707,8 @@
         let modelLoaded = false;
         let neo4jConnected = false;
         let isRecording = false;
+        let discoveredModels = [];
+        let selectedModelInfo = null;
 
         // 标签页切换
         function showTab(tabName) {
@@ -714,10 +775,282 @@
             }
         }
 
+        // 发现可用模型
+        async function discoverModels() {
+            const scanBtn = document.querySelector('.btn-scan');
+            const scanStatus = document.getElementById('model-scan-status');
+
+            // 添加扫描动画
+            scanBtn.classList.add('scanning');
+            scanBtn.querySelector('.scan-text').textContent = '扫描中...';
+
+            scanStatus.textContent = '🔍 正在扫描模型目录...';
+            scanStatus.style.borderLeftColor = '#ff9f43';
+
+            logMessage('info', '开始扫描模型目录');
+
+            const result = await callAPI('discover_models');
+
+            // 移除扫描动画
+            scanBtn.classList.remove('scanning');
+            scanBtn.querySelector('.scan-text').textContent = '扫描';
+
+            if (result.status === 'success') {
+                discoveredModels = result.models;
+                updateModelSelector();
+
+                const validCount = result.models.filter(m => m.valid).length;
+                scanStatus.innerHTML = `✅ 发现 <strong>${result.count}</strong> 个模型目录，其中 <strong>${validCount}</strong> 个有效`;
+                scanStatus.style.borderLeftColor = '#2ed573';
+
+                logMessage('info', `模型扫描完成，发现 ${result.count} 个模型目录`);
+            } else {
+                scanStatus.innerHTML = `❌ 扫描失败: ${result.message}`;
+                scanStatus.style.borderLeftColor = '#ff4757';
+                logMessage('error', `模型扫描失败: ${result.message}`);
+            }
+        }
+
+        // 更新模型选择器
+        function updateModelSelector() {
+            const selector = document.getElementById('model-selector');
+
+            // 清空现有选项
+            selector.innerHTML = '<option value="">🎯 选择一个模型...</option>';
+
+            if (discoveredModels.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = '😔 未发现任何模型';
+                option.disabled = true;
+                selector.appendChild(option);
+                return;
+            }
+
+            // 添加发现的模型
+            discoveredModels.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.path;
+
+                // 设置显示文本和样式
+                if (model.valid) {
+                    option.textContent = `${model.display_name}`;
+                    option.style.color = '#2f3542';
+                } else {
+                    option.textContent = `${model.display_name} (⚠️ 不完整)`;
+                    option.style.color = '#ff6b7a';
+                    option.style.fontStyle = 'italic';
+                }
+
+                selector.appendChild(option);
+            });
+
+            // 添加事件监听器
+            selector.removeEventListener('change', onModelSelect); // 防止重复绑定
+            selector.addEventListener('change', onModelSelect);
+        }
+
+        // 模型选择事件处理
+        async function onModelSelect(event) {
+            const selectedPath = event.target.value;
+            const pathInput = document.getElementById('model-path');
+            const detailsDiv = document.getElementById('model-details');
+            const loadBtn = document.getElementById('load-model-btn');
+
+            if (selectedPath) {
+                // 更新路径输入框
+                pathInput.value = selectedPath;
+
+                // 显示模型详细信息
+                await loadModelDetails(selectedPath);
+                detailsDiv.style.display = 'block';
+
+                // 确保按钮可见和可用
+                loadBtn.style.display = 'inline-block';
+                loadBtn.disabled = false;
+                loadBtn.textContent = '加载模型';
+
+                logMessage('info', `已选择模型: ${selectedPath}`);
+            } else {
+                // 隐藏详细信息
+                detailsDiv.style.display = 'none';
+                selectedModelInfo = null;
+            }
+        }
+
+        // 加载模型详细信息
+        async function loadModelDetails(modelPath) {
+            const result = await callAPI('get_model_info', 'POST', { model_path: modelPath });
+
+            if (result.status === 'success') {
+                selectedModelInfo = result.model_info;
+                displayModelDetails(selectedModelInfo);
+            } else {
+                logMessage('error', `获取模型信息失败: ${result.message}`);
+            }
+        }
+
+        // 显示模型详细信息
+        function displayModelDetails(modelInfo) {
+            // 基本信息
+            const basicInfo = document.getElementById('model-basic-info');
+            basicInfo.innerHTML = `
+                <li>名称: ${modelInfo.name}</li>
+                <li>类型: ${modelInfo.model_type || '未知'}</li>
+                <li>大小: ${modelInfo.total_size_display}</li>
+                <li>词汇量: ${modelInfo.vocab_size ? modelInfo.vocab_size.toLocaleString() : '未知'}</li>
+            `;
+
+            // 文件统计
+            const fileStats = document.getElementById('model-file-stats');
+            const modelFiles = modelInfo.files.filter(f => f.type === 'model');
+            const configFiles = modelInfo.config_files || [];
+            const tokenizerFiles = modelInfo.tokenizer_files || [];
+
+            fileStats.innerHTML = `
+                <li>模型文件: ${modelFiles.length}</li>
+                <li>配置文件: ${configFiles.length}</li>
+                <li>分词器文件: ${tokenizerFiles.length}</li>
+                <li>总文件数: ${modelInfo.files.length}</li>
+            `;
+
+            // 文件列表
+            const filesList = document.getElementById('model-files-list');
+            let filesHtml = '';
+
+            // 按类型分组显示
+            const filesByType = {
+                'model': modelFiles,
+                'config': configFiles,
+                'tokenizer': tokenizerFiles,
+                'other': modelInfo.files.filter(f => !['model', 'config', 'tokenizer'].includes(f.type))
+            };
+
+            Object.entries(filesByType).forEach(([type, files]) => {
+                if (files.length > 0) {
+                    const typeNames = {
+                        'model': '🧠 模型文件',
+                        'config': '⚙️ 配置文件',
+                        'tokenizer': '📝 分词器文件',
+                        'other': '📄 其他文件'
+                    };
+
+                    filesHtml += `<div style="margin-bottom: 10px;">
+                        <strong>${typeNames[type]}:</strong><br>`;
+
+                    files.forEach(file => {
+                        const sizeText = file.size_mb ? `${file.size_mb} MB` : '未知大小';
+                        filesHtml += `<div style="margin-left: 15px; font-size: 12px;">
+                            ${file.name} (${sizeText})
+                        </div>`;
+                    });
+
+                    filesHtml += '</div>';
+                }
+            });
+
+            filesList.innerHTML = filesHtml || '无文件信息';
+        }
+
+        // 生成文件列表HTML
+        function generateFilesList(files) {
+            if (!files || files.length === 0) {
+                return '<div style="text-align: center; color: #999; padding: 20px;">📭 无文件信息</div>';
+            }
+
+            // 按类型分组
+            const filesByType = {
+                'model': files.filter(f => f.type === 'model'),
+                'config': files.filter(f => f.type === 'config'),
+                'tokenizer': files.filter(f => f.type === 'tokenizer'),
+                'other': files.filter(f => !['model', 'config', 'tokenizer'].includes(f.type))
+            };
+
+            const typeConfig = {
+                'model': { icon: '🧠', name: '模型文件', color: '#667eea' },
+                'config': { icon: '⚙️', name: '配置文件', color: '#2ed573' },
+                'tokenizer': { icon: '📝', name: '分词器文件', color: '#ff9f43' },
+                'other': { icon: '📄', name: '其他文件', color: '#a4b0be' }
+            };
+
+            let html = '';
+
+            Object.entries(filesByType).forEach(([type, typeFiles]) => {
+                if (typeFiles.length > 0) {
+                    const config = typeConfig[type];
+                    html += `
+                        <div style="margin-bottom: 15px;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-weight: 600; color: ${config.color};">
+                                <span>${config.icon}</span>
+                                <span>${config.name} (${typeFiles.length})</span>
+                            </div>
+                            <div style="margin-left: 20px;">
+                    `;
+
+                    typeFiles.forEach(file => {
+                        const sizeText = file.size_mb ? `${file.size_mb} MB` : '未知大小';
+                        html += `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; background: rgba(255,255,255,0.7); border-radius: 4px; margin-bottom: 4px; font-size: 12px;">
+                                <span style="font-family: 'Courier New', monospace;">${file.name}</span>
+                                <span style="color: #666; font-size: 11px;">${sizeText}</span>
+                            </div>
+                        `;
+                    });
+
+                    html += '</div></div>';
+                }
+            });
+
+            return html || '<div style="text-align: center; color: #999; padding: 20px;">📭 无文件信息</div>';
+        }
+
+        // 切换模型模式
+        function toggleModelMode() {
+            const selectedMode = document.querySelector('input[name="model-mode"]:checked').value;
+            const autoSection = document.getElementById('auto-model-section');
+            const manualSection = document.getElementById('manual-model-section');
+            const detailsDiv = document.getElementById('model-details');
+
+            if (selectedMode === 'auto') {
+                autoSection.style.display = 'block';
+                manualSection.style.display = 'none';
+                logMessage('info', '切换到自动发现模式');
+            } else {
+                autoSection.style.display = 'none';
+                manualSection.style.display = 'block';
+                detailsDiv.style.display = 'none';
+                logMessage('info', '切换到手动输入模式');
+            }
+        }
+
+        // 显示模型信息对话框
+        function showModelInfo() {
+            if (selectedModelInfo) {
+                alert(`模型信息:\n名称: ${selectedModelInfo.name}\n路径: ${selectedModelInfo.path}\n大小: ${selectedModelInfo.total_size_display}\n文件数: ${selectedModelInfo.files.length}`);
+            }
+        }
+
         // 大语言模型功能
         async function loadModel() {
-            const modelPath = document.getElementById('model-path').value;
-            logMessage('info', '正在加载模型...');
+            let modelPath;
+
+            if (document.getElementById('manual-path-toggle').checked) {
+                modelPath = document.getElementById('model-path').value;
+            } else {
+                modelPath = document.getElementById('model-selector').value;
+            }
+
+            if (!modelPath) {
+                alert('请选择或输入模型路径');
+                return;
+            }
+
+            // 禁用按钮防止重复点击
+            const loadBtn = document.getElementById('load-model-btn');
+            loadBtn.disabled = true;
+            loadBtn.textContent = '正在加载...';
+
+            logMessage('info', `正在加载模型: ${modelPath}`);
 
             const result = await callAPI('load_model', 'POST', { model_path: modelPath });
 
@@ -725,9 +1058,16 @@
                 modelLoaded = true;
                 document.getElementById('model-status').textContent = '● 模型已加载';
                 document.getElementById('model-status').className = 'status-indicator status-online';
+                loadBtn.textContent = '✓ 模型已加载';
+                loadBtn.style.backgroundColor = '#2ed573';
                 logMessage('info', '模型加载成功');
             } else {
+                // 加载失败，恢复按钮状态
+                loadBtn.disabled = false;
+                loadBtn.textContent = '加载模型';
+                loadBtn.style.backgroundColor = '';
                 logMessage('error', `模型加载失败: ${result.message}`);
+                alert('模型加载失败: ' + result.message);
             }
         }
 
@@ -738,7 +1078,15 @@
                 modelLoaded = false;
                 document.getElementById('model-status').textContent = '● 模型未加载';
                 document.getElementById('model-status').className = 'status-indicator status-offline';
+
+                const loadBtn = document.getElementById('load-model-btn');
+                loadBtn.textContent = '加载模型';
+                loadBtn.disabled = false;
+                loadBtn.style.backgroundColor = '';
+
                 logMessage('info', '模型已卸载');
+            } else {
+                logMessage('error', `模型卸载失败: ${result.message}`);
             }
         }
 
@@ -1226,8 +1574,10 @@
 
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(() => {
+                discoverModels();
+            }, 3000);
             logMessage('info', '系统界面加载完成');
-
             // 加载学生列表
             callAPI('get_students').then(result => {
                 if (result.status === 'success') {
