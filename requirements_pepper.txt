@@ -1,7 +1,0 @@
-# PEPPER机器人控制依赖
-naoqi-python>=2.8.6  # 注意：这需要从SoftBank Robotics开发者网站下载
-numpy>=1.16.6  # 使用较旧版本以兼容Python 2.7
-Pillow>=8.4.0  # 使用较旧版本以兼容Python 2.7
-websocket-client>=1.3.3
-tkinter  # 通常包含在Python标准库中
-pyaudio>=0.2.13  # 用于音频记录
