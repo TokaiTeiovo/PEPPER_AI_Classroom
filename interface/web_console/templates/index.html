@@ -519,8 +519,8 @@
                         <label>训练数据文件</label>
                         <div class="file-upload" id="file-upload-area">
                             <input type="file" id="training-data" accept=".json,.csv" style="display: none;">
-                            <p id="upload-text">📤 点击上传训练数据</p>
-                            <small>支持JSON/CSV格式的指令数据</small>
+                            <p id="upload-text">>点击上传训练数据</p>
+                            <small>支持JSON/CSV格式</small>
                         </div>
                     </div>
 
@@ -949,14 +949,9 @@
             logMessage('info', '开始LoRA微调函数被调用');
             
             // 先检查元素是否存在
-            /* const fileInput = document.getElementById('training-data');
-            if (!fileInput) {
-                logMessage('error', '找不到training-data元素');
-                alert('页面元素错误，请刷新页面重试');
-                return;
-            } */
+            const fileInput = document.getElementById('training-data');
             
-            if (!fileInput.files || !fileInput.files[0]) {
+            if (!fileInput.files[0]) {
                 alert('请先上传训练数据');
                 logMessage('error', '没有选择训练数据文件');
                 return;

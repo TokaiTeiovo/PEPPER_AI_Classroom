@@ -1319,6 +1319,7 @@
             const fileInput = document.getElementById('training-data');
             if (!fileInput.files[0]) {
                 alert('请先上传训练数据');
+                logMessage('error', '没有选择训练数据文件');
                 return;
             }
 
