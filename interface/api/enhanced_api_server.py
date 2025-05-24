@@ -250,6 +250,207 @@ def get_training_progress():
     })
 
 
+@app.route('/api/discover_models', methods=['GET'])
+def discover_models():
+    """发现可用的模型"""
+    try:
+        models_dir = 'models'
+        available_models = []
+
+        # 检查models目录是否存在
+        if not os.path.exists(models_dir):
+            os.makedirs(models_dir, exist_ok=True)
+            logger.info("创建了models目录")
+
+        # 遍历models目录
+        for item in os.listdir(models_dir):
+            item_path = os.path.join(models_dir, item)
+
+            # 只处理文件夹
+            if os.path.isdir(item_path):
+                model_info = {
+                    "name": item,
+                    "path": item_path,
+                    "display_name": item,
+                    "valid": False,
+                    "size": 0,
+                    "files": []
+                }
+
+                # 检查是否是有效的模型目录
+                model_files = []
+                total_size = 0
+
+                try:
+                    for root, dirs, files in os.walk(item_path):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            file_size = os.path.getsize(file_path)
+                            total_size += file_size
+
+                            # 检查关键模型文件
+                            if file.endswith(('.bin', '.safetensors', '.pt', '.pth', '.ckpt')):
+                                model_files.append({
+                                    "name": file,
+                                    "size": file_size,
+                                    "type": "model"
+                                })
+                            elif file in ['config.json', 'tokenizer.json', 'tokenizer_config.json']:
+                                model_files.append({
+                                    "name": file,
+                                    "size": file_size,
+                                    "type": "config"
+                                })
+                            elif file in ['vocab.txt', 'merges.txt', 'special_tokens_map.json']:
+                                model_files.append({
+                                    "name": file,
+                                    "size": file_size,
+                                    "type": "tokenizer"
+                                })
+
+                except Exception as e:
+                    logger.warning(f"扫描模型目录 {item_path} 时出错: {e}")
+                    continue
+
+                # 判断是否为有效模型
+                has_model_file = any(f['type'] == 'model' for f in model_files)
+                has_config = any(f['type'] == 'config' for f in model_files)
+
+                if has_model_file or has_config:
+                    model_info["valid"] = True
+
+                model_info["size"] = total_size
+                model_info["files"] = model_files
+
+                # 生成更友好的显示名称
+                if "deepseek" in item.lower():
+                    model_info["display_name"] = f"🧠 DeepSeek - {item}"
+                elif "chatglm" in item.lower():
+                    model_info["display_name"] = f"💬 ChatGLM - {item}"
+                elif "qwen" in item.lower():
+                    model_info["display_name"] = f"🔮 Qwen - {item}"
+                elif "llama" in item.lower():
+                    model_info["display_name"] = f"🦙 LLaMA - {item}"
+                else:
+                    model_info["display_name"] = f"🤖 {item}"
+
+                available_models.append(model_info)
+
+        # 按有效性和名称排序
+        available_models.sort(key=lambda x: (not x["valid"], x["name"]))
+
+        logger.info(f"发现 {len(available_models)} 个模型目录")
+
+        return jsonify({
+            "status": "success",
+            "models": available_models,
+            "count": len(available_models)
+        })
+
+    except Exception as e:
+        logger.error(f"模型发现失败: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        })
+
+@app.route('/api/get_model_info', methods=['POST'])
+def get_model_info():
+    """获取特定模型的详细信息"""
+    try:
+        data = request.json
+        model_path = data.get('model_path', '')
+
+        if not model_path or not os.path.exists(model_path):
+            return jsonify({
+                "status": "error",
+                "message": "模型路径不存在"
+            })
+
+        model_info = {
+            "path": model_path,
+            "name": os.path.basename(model_path),
+            "files": [],
+            "total_size": 0,
+            "model_files_count": 0,
+            "config_files": [],
+            "tokenizer_files": []
+        }
+
+        # 扫描模型文件
+        for root, dirs, files in os.walk(model_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                try:
+                    file_size = os.path.getsize(file_path)
+                    model_info["total_size"] += file_size
+
+                    relative_path = os.path.relpath(file_path, model_path)
+
+                    file_info = {
+                        "name": file,
+                        "path": relative_path,
+                        "size": file_size,
+                        "size_mb": round(file_size / (1024 * 1024), 2)
+                    }
+
+                    if file.endswith(('.bin', '.safetensors', '.pt', '.pth', '.ckpt')):
+                        file_info["type"] = "model"
+                        model_info["model_files_count"] += 1
+                    elif file == 'config.json':
+                        file_info["type"] = "config"
+                        model_info["config_files"].append(file_info)
+
+                        # 尝试读取配置信息
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                config = json.load(f)
+                                model_info["model_type"] = config.get("model_type", "unknown")
+                                model_info["architectures"] = config.get("architectures", [])
+                                model_info["vocab_size"] = config.get("vocab_size", 0)
+                        except:
+                            pass
+                    elif file in ['tokenizer.json', 'tokenizer_config.json', 'vocab.txt', 'merges.txt']:
+                        file_info["type"] = "tokenizer"
+                        model_info["tokenizer_files"].append(file_info)
+                    else:
+                        file_info["type"] = "other"
+
+                    model_info["files"].append(file_info)
+
+                except Exception as e:
+                    logger.warning(f"无法获取文件信息 {file_path}: {e}")
+                    continue
+
+        # 转换总大小为可读格式
+        total_size_mb = model_info["total_size"] / (1024 * 1024)
+        if total_size_mb > 1024:
+            model_info["total_size_display"] = f"{total_size_mb / 1024:.1f} GB"
+        else:
+            model_info["total_size_display"] = f"{total_size_mb:.1f} MB"
+
+        return jsonify({
+            "status": "success",
+            "model_info": model_info
+        })
+
+    except Exception as e:
+        logger.error(f"获取模型信息失败: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        })
+
+def format_file_size(size_bytes):
+    """格式化文件大小"""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    elif size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+    else:
+        return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
 # ======================== 知识图谱API ========================
 
 @app.route('/api/connect_neo4j', methods=['POST'])
@@ -427,7 +628,6 @@ def execute_cypher():
             "status": "error",
             "message": str(e)
         })
-
 
 @app.route('/api/get_graph_stats', methods=['GET'])
 def get_graph_stats():
@@ -1040,209 +1240,6 @@ def export_report():
             "message": str(e)
         })
 
-
-@app.route('/api/discover_models', methods=['GET'])
-def discover_models():
-    """发现可用的模型"""
-    try:
-        models_dir = 'models'
-        available_models = []
-
-        # 检查models目录是否存在
-        if not os.path.exists(models_dir):
-            os.makedirs(models_dir, exist_ok=True)
-            logger.info("创建了models目录")
-
-        # 遍历models目录
-        for item in os.listdir(models_dir):
-            item_path = os.path.join(models_dir, item)
-
-            # 只处理文件夹
-            if os.path.isdir(item_path):
-                model_info = {
-                    "name": item,
-                    "path": item_path,
-                    "display_name": item,
-                    "valid": False,
-                    "size": 0,
-                    "files": []
-                }
-
-                # 检查是否是有效的模型目录
-                model_files = []
-                total_size = 0
-
-                try:
-                    for root, dirs, files in os.walk(item_path):
-                        for file in files:
-                            file_path = os.path.join(root, file)
-                            file_size = os.path.getsize(file_path)
-                            total_size += file_size
-
-                            # 检查关键模型文件
-                            if file.endswith(('.bin', '.safetensors', '.pt', '.pth', '.ckpt')):
-                                model_files.append({
-                                    "name": file,
-                                    "size": file_size,
-                                    "type": "model"
-                                })
-                            elif file in ['config.json', 'tokenizer.json', 'tokenizer_config.json']:
-                                model_files.append({
-                                    "name": file,
-                                    "size": file_size,
-                                    "type": "config"
-                                })
-                            elif file in ['vocab.txt', 'merges.txt', 'special_tokens_map.json']:
-                                model_files.append({
-                                    "name": file,
-                                    "size": file_size,
-                                    "type": "tokenizer"
-                                })
-
-                except Exception as e:
-                    logger.warning(f"扫描模型目录 {item_path} 时出错: {e}")
-                    continue
-
-                # 判断是否为有效模型
-                has_model_file = any(f['type'] == 'model' for f in model_files)
-                has_config = any(f['type'] == 'config' for f in model_files)
-
-                if has_model_file or has_config:
-                    model_info["valid"] = True
-
-                model_info["size"] = total_size
-                model_info["files"] = model_files
-
-                # 生成更友好的显示名称
-                if "deepseek" in item.lower():
-                    model_info["display_name"] = f"🧠 DeepSeek - {item}"
-                elif "chatglm" in item.lower():
-                    model_info["display_name"] = f"💬 ChatGLM - {item}"
-                elif "qwen" in item.lower():
-                    model_info["display_name"] = f"🔮 Qwen - {item}"
-                elif "llama" in item.lower():
-                    model_info["display_name"] = f"🦙 LLaMA - {item}"
-                else:
-                    model_info["display_name"] = f"🤖 {item}"
-
-                available_models.append(model_info)
-
-        # 按有效性和名称排序
-        available_models.sort(key=lambda x: (not x["valid"], x["name"]))
-
-        logger.info(f"发现 {len(available_models)} 个模型目录")
-
-        return jsonify({
-            "status": "success",
-            "models": available_models,
-            "count": len(available_models)
-        })
-
-    except Exception as e:
-        logger.error(f"模型发现失败: {e}")
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        })
-
-
-@app.route('/api/get_model_info', methods=['POST'])
-def get_model_info():
-    """获取特定模型的详细信息"""
-    try:
-        data = request.json
-        model_path = data.get('model_path', '')
-
-        if not model_path or not os.path.exists(model_path):
-            return jsonify({
-                "status": "error",
-                "message": "模型路径不存在"
-            })
-
-        model_info = {
-            "path": model_path,
-            "name": os.path.basename(model_path),
-            "files": [],
-            "total_size": 0,
-            "model_files_count": 0,
-            "config_files": [],
-            "tokenizer_files": []
-        }
-
-        # 扫描模型文件
-        for root, dirs, files in os.walk(model_path):
-            for file in files:
-                file_path = os.path.join(root, file)
-                try:
-                    file_size = os.path.getsize(file_path)
-                    model_info["total_size"] += file_size
-
-                    relative_path = os.path.relpath(file_path, model_path)
-
-                    file_info = {
-                        "name": file,
-                        "path": relative_path,
-                        "size": file_size,
-                        "size_mb": round(file_size / (1024 * 1024), 2)
-                    }
-
-                    if file.endswith(('.bin', '.safetensors', '.pt', '.pth', '.ckpt')):
-                        file_info["type"] = "model"
-                        model_info["model_files_count"] += 1
-                    elif file == 'config.json':
-                        file_info["type"] = "config"
-                        model_info["config_files"].append(file_info)
-
-                        # 尝试读取配置信息
-                        try:
-                            with open(file_path, 'r', encoding='utf-8') as f:
-                                config = json.load(f)
-                                model_info["model_type"] = config.get("model_type", "unknown")
-                                model_info["architectures"] = config.get("architectures", [])
-                                model_info["vocab_size"] = config.get("vocab_size", 0)
-                        except:
-                            pass
-                    elif file in ['tokenizer.json', 'tokenizer_config.json', 'vocab.txt', 'merges.txt']:
-                        file_info["type"] = "tokenizer"
-                        model_info["tokenizer_files"].append(file_info)
-                    else:
-                        file_info["type"] = "other"
-
-                    model_info["files"].append(file_info)
-
-                except Exception as e:
-                    logger.warning(f"无法获取文件信息 {file_path}: {e}")
-                    continue
-
-        # 转换总大小为可读格式
-        total_size_mb = model_info["total_size"] / (1024 * 1024)
-        if total_size_mb > 1024:
-            model_info["total_size_display"] = f"{total_size_mb / 1024:.1f} GB"
-        else:
-            model_info["total_size_display"] = f"{total_size_mb:.1f} MB"
-
-        return jsonify({
-            "status": "success",
-            "model_info": model_info
-        })
-
-    except Exception as e:
-        logger.error(f"获取模型信息失败: {e}")
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        })
-
-def format_file_size(size_bytes):
-    """格式化文件大小"""
-    if size_bytes < 1024:
-        return f"{size_bytes} B"
-    elif size_bytes < 1024 * 1024:
-        return f"{size_bytes / 1024:.1f} KB"
-    elif size_bytes < 1024 * 1024 * 1024:
-        return f"{size_bytes / (1024 * 1024):.1f} MB"
-    else:
-        return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
 
 @app.route('/download_report/<filename>')
 def download_report(filename):
