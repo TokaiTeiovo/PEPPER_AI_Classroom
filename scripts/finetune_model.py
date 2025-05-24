@@ -73,6 +73,24 @@ def main():
         quantization_suffix = "_4bit" if use_4bit else "_8bit" if use_8bit else ""
         args.output_dir = f"models/deepseek-{timestamp}{quantization_suffix}"
 
+    if not fine_tuner.load_base_model(use_4bit=use_4bit, use_8bit=use_8bit):
+        logger.error("模型加载失败，退出")
+        return
+
+    if fine_tuner.prepare_lora_config() is None:
+        logger.error("LoRA配置失败，退出")
+        return
+
+    dataset = fine_tuner.prepare_dataset(data_path=args.data_path)
+    if dataset is None:
+        logger.error("数据加载失败，退出")
+        return
+
+    fine_tuner.train(
+        dataset=dataset,
+        epochs=args.epochs,
+        batch_size=args.batch_size
+    )
 
 if __name__ == "__main__":
     main()
