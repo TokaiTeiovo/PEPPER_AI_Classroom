@@ -258,6 +258,85 @@
             overflow-y: auto;
         }
 
+        /* 量化选项样式 */
+        .quantization-options {
+            margin-bottom: 15px;
+        }
+
+        .radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .radio-option {
+            display: flex;
+            align-items: flex-start;
+            padding: 10px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        .radio-option:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+
+        .radio-option input[type="radio"] {
+            margin-right: 10px;
+            margin-top: 2px;
+        }
+
+        .radio-option input[type="radio"]:checked + .radio-label {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .radio-option:has(input:checked) {
+            border-color: #667eea;
+            background: #f0f4ff;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+        }
+
+        .radio-label {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .radio-label strong {
+            font-size: 14px;
+        }
+
+        .radio-label small {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .progress-container {
+            position: relative;
+        }
+
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        /* 量化信息样式 */
+        #quantization-info {
+            border-left: 4px solid #667eea;
+        }
+
+        #training-details {
+            border-left: 4px solid #2ed573;
+        }
+
         @media (max-width: 768px) {
             .grid-2, .grid-3, .form-row {
                 grid-template-columns: 1fr;
@@ -265,6 +344,22 @@
 
             .nav-tabs {
                 flex-direction: column;
+            }
+
+            .radio-group {
+                gap: 6px;
+            }
+
+            .radio-option {
+                padding: 8px;
+            }
+
+            .radio-label strong {
+                font-size: 13px;
+            }
+
+            .radio-label small {
+                font-size: 11px;
             }
         }
     </style>
@@ -364,6 +459,42 @@
                     </div>
 
                     <h2>LoRA微调</h2>
+                    <!-- 量化配置部分 -->
+                    <div class="form-group">
+                        <label>量化设置</label>
+                        <div class="quantization-options">
+                            <div class="quantization-info" id="quantization-info" style="background: #f8f9ff; padding: 10px; border-radius: 6px; margin-bottom: 10px; font-size: 12px;">
+                                <div>🔍 正在检查量化支持...</div>
+                            </div>
+
+                            <div class="radio-group">
+                                <label class="radio-option">
+                                    <input type="radio" name="quantization" value="4bit" checked>
+                                    <span class="radio-label">
+                                        <strong>4bit量化</strong>
+                                        <small>最节省内存，适合低配置GPU（推荐）</small>
+                                    </span>
+                                </label>
+
+                                <label class="radio-option">
+                                    <input type="radio" name="quantization" value="8bit">
+                                    <span class="radio-label">
+                                        <strong>8bit量化</strong>
+                                        <small>平衡性能和内存使用</small>
+                                    </span>
+                                </label>
+
+                                <label class="radio-option">
+                                    <input type="radio" name="quantization" value="full">
+                                    <span class="radio-label">
+                                        <strong>全精度训练</strong>
+                                        <small>最高质量，需要大量GPU内存</small>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="form-group">
                         <label>训练数据文件</label>
                         <div class="file-upload" onclick="document.getElementById('training-data').click()">
@@ -372,25 +503,55 @@
                             <small>支持JSON/CSV格式</small>
                         </div>
                     </div>
+
                     <div class="form-row">
                         <div class="form-group">
                             <label>训练轮数</label>
                             <input type="number" id="epochs" value="3" min="1" max="10">
                         </div>
                         <div class="form-group">
+                            <label>批次大小</label>
+                            <input type="number" id="batch-size" value="2" min="1" max="8">
+                            <small>4bit量化推荐使用2</small>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
                             <label>学习率</label>
                             <input type="number" id="learning-rate" value="0.0002" step="0.0001">
                         </div>
+                        <div class="form-group">
+                            <label>预计训练时间</label>
+                            <div id="estimated-time" style="padding: 8px; background: #f1f3f4; border-radius: 4px; font-size: 12px;">
+                                根据配置自动计算
+                            </div>
+                        </div>
                     </div>
+
                     <div class="form-group">
-                        <button onclick="startFineTuning()">开始微调</button>
+                        <button onclick="startFineTuning()" id="start-training-btn">开始微调</button>
+                        <button class="btn-secondary" onclick="checkQuantizationSupport()">检查量化支持</button>
                     </div>
+
                     <div class="form-group">
                         <label>训练进度</label>
-                        <div class="progress-bar">
-                            <div class="progress-fill" id="training-progress" style="width: 0%"></div>
+                        <div class="progress-container">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="training-progress" style="width: 0%"></div>
+                            </div>
+                            <div class="progress-info">
+                                <span id="progress-text">0%</span>
+                                <span id="progress-time"></span>
+                            </div>
                         </div>
-                        <span id="progress-text">0%</span>
+
+                        <!-- 详细训练信息 -->
+                        <div id="training-details" style="display: none; margin-top: 10px; padding: 10px; background: #f8f9ff; border-radius: 6px; font-size: 12px;">
+                            <div><strong>量化方式:</strong> <span id="training-quantization">-</span></div>
+                            <div><strong>批次大小:</strong> <span id="training-batch-size">-</span></div>
+                            <div><strong>预计剩余:</strong> <span id="training-remaining">-</span></div>
+                        </div>
                     </div>
                 </div>
 
@@ -1031,13 +1192,15 @@
         }
 
         // 大语言模型功能
+        // 修改模型加载函数以支持量化
         async function loadModel() {
             let modelPath;
+            const selectedMode = document.querySelector('input[name="model-mode"]:checked').value;
 
-            if (document.getElementById('model-path').checked) {
-                modelPath = document.getElementById('model-path').value;
-            } else {
+            if (selectedMode === 'auto') {
                 modelPath = document.getElementById('model-selector').value;
+            } else {
+                modelPath = document.getElementById('model-path').value;
             }
 
             if (!modelPath) {
@@ -1052,15 +1215,35 @@
 
             logMessage('info', `正在加载模型: ${modelPath}`);
 
-            const result = await callAPI('load_model', 'POST', { model_path: modelPath });
+            // 获取量化设置推荐
+            let use_4bit = true;  // 默认使用4bit
+            let use_8bit = false;
+
+            try {
+                const quantInfo = await callAPI('get_quantization_info');
+                if (quantInfo.status === 'success') {
+                    const rec = quantInfo.recommendations;
+                    use_4bit = rec.use_4bit;
+                    use_8bit = rec.use_8bit;
+                }
+            } catch (e) {
+                logMessage('warning', '无法获取量化推荐，使用默认4bit');
+            }
+
+            const result = await callAPI('load_model', 'POST', {
+                model_path: modelPath,
+                use_4bit: use_4bit,
+                use_8bit: use_8bit
+            });
 
             if (result.status === 'success') {
                 modelLoaded = true;
-                document.getElementById('model-status').textContent = '● 模型已加载';
+                const quantization = result.quantization || 'unknown';
+                document.getElementById('model-status').textContent = `● 模型已加载 (${quantization})`;
                 document.getElementById('model-status').className = 'status-indicator status-online';
-                loadBtn.textContent = '✓ 模型已加载';
+                loadBtn.textContent = `✓ 模型已加载 (${quantization})`;
                 loadBtn.style.backgroundColor = '#2ed573';
-                logMessage('info', '模型加载成功');
+                logMessage('info', `模型加载成功，使用${quantization}量化`);
             } else {
                 // 加载失败，恢复按钮状态
                 loadBtn.disabled = false;
@@ -1545,6 +1728,220 @@
             }
         }
 
+        // 检查量化支持
+        async function checkQuantizationSupport() {
+            try {
+                const result = await callAPI('check_quantization_support');
+
+                if (result.status === 'success') {
+                    quantizationSupport = result.support_info;
+                    displayQuantizationInfo(result.support_info);
+                } else {
+                    document.getElementById('quantization-info').innerHTML =
+                        `<div style="color: #ff4757;">❌ 检查量化支持失败: ${result.message}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('quantization-info').innerHTML =
+                    `<div style="color: #ff4757;">❌ 检查量化支持时出错: ${error.message}</div>`;
+            }
+        }
+
+        // 显示量化信息
+        function displayQuantizationInfo(info) {
+            const infoDiv = document.getElementById('quantization-info');
+
+            if (info.quantization_ready) {
+                infoDiv.innerHTML = `
+                    <div style="color: #2ed573;">✅ 量化训练支持完整</div>
+                    <div>GPU: ${info.cuda_available ? '可用' : '不可用'} | PyTorch: ${info.torch_version}</div>
+                `;
+            } else {
+                const recommendations = info.recommendations.join('<br>');
+                infoDiv.innerHTML = `
+                    <div style="color: #ff9f43;">⚠️ 量化训练支持不完整</div>
+                    <div style="margin-top: 5px;">${recommendations}</div>
+                `;
+            }
+        }
+
+        // 更新量化推荐
+        async function updateQuantizationRecommendations() {
+            try {
+                const result = await callAPI('get_quantization_info');
+
+                if (result.status === 'success') {
+                    const recommendations = result.recommendations;
+
+                    // 更新批次大小推荐
+                    document.getElementById('batch-size').value = recommendations.recommended_batch_size;
+
+                    // 显示推荐原因
+                    const reasonDiv = document.getElementById('quantization-info');
+                    if (reasonDiv) {
+                        const currentInfo = reasonDiv.innerHTML;
+                        reasonDiv.innerHTML = currentInfo + `<br><small>💡 ${recommendations.reason}</small>`;
+                    }
+
+                    logMessage('info', `量化推荐: ${recommendations.reason}`);
+                }
+            } catch (error) {
+                logMessage('warning', `获取量化推荐失败: ${error.message}`);
+            }
+        }
+
+        // 更新预计训练时间
+        function updateEstimatedTime() {
+            const epochs = parseInt(document.getElementById('epochs').value);
+            const batchSize = parseInt(document.getElementById('batch-size').value);
+            const quantization = document.querySelector('input[name="quantization"]:checked').value;
+
+            // 简单估算（实际时间会根据硬件和数据量变化）
+            let baseTimePerEpoch = 5; // 分钟
+
+            // 根据量化类型调整
+            if (quantization === '4bit') {
+                baseTimePerEpoch *= 1.2; // 4bit稍慢
+            } else if (quantization === '8bit') {
+                baseTimePerEpoch *= 1.1; // 8bit稍慢
+            }
+
+            // 根据批次大小调整
+            baseTimePerEpoch *= (4 / batchSize); // 批次越小，时间越长
+
+            const totalMinutes = epochs * baseTimePerEpoch;
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = Math.floor(totalMinutes % 60);
+
+            let timeText = '';
+            if (hours > 0) {
+                timeText = `约${hours}小时${minutes}分钟`;
+            } else {
+                timeText = `约${minutes}分钟`;
+            }
+
+            document.getElementById('estimated-time').textContent = timeText;
+        }
+
+        // 修改开始微调函数
+        async function startFineTuning() {
+            const fileInput = document.getElementById('training-data');
+            if (!fileInput.files[0]) {
+                alert('请先上传训练数据');
+                return;
+            }
+
+            // 检查量化支持
+            if (!quantizationSupport || !quantizationSupport.quantization_ready) {
+                const confirm = window.confirm(
+                    '检测到量化训练支持不完整，可能会导致训练失败。\n' +
+                    '建议先安装必要的依赖库。\n\n' +
+                    '是否继续训练？'
+                );
+                if (!confirm) return;
+            }
+
+            const quantization = document.querySelector('input[name="quantization"]:checked').value;
+            const epochs = document.getElementById('epochs').value;
+            const batchSize = document.getElementById('batch-size').value;
+            const learningRate = document.getElementById('learning-rate').value;
+
+            const formData = new FormData();
+            formData.append('training_data', fileInput.files[0]);
+            formData.append('epochs', epochs);
+            formData.append('batch_size', batchSize);
+            formData.append('learning_rate', learningRate);
+            formData.append('use_4bit', quantization === '4bit' ? 'true' : 'false');
+            formData.append('use_8bit', quantization === '8bit' ? 'true' : 'false');
+
+            // 禁用开始按钮
+            const startBtn = document.getElementById('start-training-btn');
+            startBtn.disabled = true;
+            startBtn.textContent = '正在启动训练...';
+
+            logMessage('info', `开始${quantization}量化LoRA微调...`);
+
+            try {
+                const result = await callAPI('start_finetuning', 'POST', formData);
+
+                if (result.status === 'success') {
+                    currentTrainingConfig = result.config;
+
+                    logMessage('info', `${quantization}量化微调已开始，模型将保存到: ${result.output_dir}`);
+
+                    // 显示训练详细信息
+                    const detailsDiv = document.getElementById('training-details');
+                    detailsDiv.style.display = 'block';
+                    document.getElementById('training-quantization').textContent = result.config.quantization;
+                    document.getElementById('training-batch-size').textContent = result.config.batch_size;
+
+                    // 开始更新进度
+                    updateTrainingProgress();
+
+                } else {
+                    logMessage('error', `微调启动失败: ${result.message}`);
+                    alert('微调启动失败: ' + result.message);
+                }
+            } catch (error) {
+                logMessage('error', `微调启动出错: ${error.message}`);
+                alert('微调启动出错: ' + error.message);
+            } finally {
+                // 恢复按钮状态
+                startBtn.disabled = false;
+                startBtn.textContent = '开始微调';
+            }
+        }
+
+        // 修改训练进度更新函数
+        async function updateTrainingProgress() {
+            try {
+                const result = await callAPI('training_progress');
+
+                if (result.status === 'success') {
+                    const progress = result.progress;
+
+                    // 更新进度条
+                    document.getElementById('training-progress').style.width = `${progress}%`;
+                    document.getElementById('progress-text').textContent = `${progress}%`;
+
+                    // 更新剩余时间
+                    if (result.estimated_remaining_seconds) {
+                        const remainingMinutes = Math.ceil(result.estimated_remaining_seconds / 60);
+                        document.getElementById('training-remaining').textContent = `${remainingMinutes}分钟`;
+                    }
+
+                    // 显示时间信息
+                    if (result.start_time) {
+                        const startTime = new Date(result.start_time).toLocaleTimeString();
+                        document.getElementById('progress-time').textContent = `开始时间: ${startTime}`;
+                    }
+
+                    if (progress < 100 && result.active) {
+                        setTimeout(updateTrainingProgress, 2000);
+                    } else if (progress >= 100) {
+                        logMessage('info', `${currentTrainingConfig?.quantization || ''}量化LoRA微调完成`);
+
+                        // 隐藏训练详情
+                        setTimeout(() => {
+                            document.getElementById('training-details').style.display = 'none';
+                        }, 5000);
+
+                        // 自动刷新模型列表
+                        setTimeout(refreshTrainedModels, 1000);
+
+                        alert(`${currentTrainingConfig?.quantization || ''}量化模型训练完成！请在"训练模型管理"中查看新模型。`);
+                    } else if (result.error) {
+                        logMessage('error', `训练失败: ${result.error}`);
+                        alert('训练失败: ' + result.error);
+                        document.getElementById('training-details').style.display = 'none';
+                    }
+                }
+            } catch (error) {
+                logMessage('error', `获取训练进度失败: ${error.message}`);
+            }
+        }
+
+
+
         // 文件上传预览
         document.getElementById('image-file').addEventListener('change', function(e) {
             const file = e.target.files[0];
@@ -1590,6 +1987,21 @@
                     });
                 }
             });
+        });
+
+        // 页面加载时检查量化支持
+        document.addEventListener('DOMContentLoaded', function() {
+            checkQuantizationSupport();
+            updateQuantizationRecommendations();
+
+            // 监听量化选项变化
+            document.querySelectorAll('input[name="quantization"]').forEach(radio => {
+                radio.addEventListener('change', updateQuantizationRecommendations);
+            });
+
+            // 监听参数变化，更新预计时间
+            document.getElementById('epochs').addEventListener('change', updateEstimatedTime);
+            document.getElementById('batch-size').addEventListener('change', updateEstimatedTime);
         });
     </script>
 </body>

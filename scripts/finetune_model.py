@@ -29,15 +29,34 @@ def main():
                         help='训练数据路径（JSON或CSV格式）')
     parser.add_argument('--epochs', type=int, default=3,
                         help='训练轮数')
-    parser.add_argument('--batch_size', type=int, default=4,
-                        help='批次大小')
+    parser.add_argument('--batch_size', type=int, default=2,
+                        help='批次大小（4bit训练推荐使用2）')
+    parser.add_argument('--use_4bit', action='store_true', default=True,
+                        help='使用4bit量化训练（默认启用）')
+    parser.add_argument('--use_8bit', action='store_true', default=False,
+                        help='使用8bit量化训练')
+    parser.add_argument('--no_quantization', action='store_true', default=False,
+                        help='不使用量化训练')
 
     args = parser.parse_args()
+
+    # 确定量化设置
+    use_4bit = args.use_4bit and not args.no_quantization
+    use_8bit = args.use_8bit and not args.no_quantization and not use_4bit
+
+    # 如果没有指定输出目录，自动生成带时间戳的目录
+    if args.no_quantization:
+        logger.info("使用标准精度训练（无量化）")
+    elif use_4bit:
+        logger.info("使用4bit量化训练")
+    elif use_8bit:
+        logger.info("使用8bit量化训练")
 
     # 如果没有指定输出目录，自动生成带时间戳的目录
     if args.output_dir is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        args.output_dir = f"models/deepseek-{timestamp}"
+        quantization_suffix = "_4bit" if use_4bit else "_8bit" if use_8bit else ""
+        args.output_dir = f"models/deepseek-{timestamp}{quantization_suffix}"
 
     # 创建输出目录
     os.makedirs(args.output_dir, exist_ok=True)
@@ -48,40 +67,11 @@ def main():
         output_dir=args.output_dir
     )
 
-    # 加载基础模型
-    if fine_tuner.load_base_model():
-        # 准备LoRA配置
-        fine_tuner.prepare_lora_config()
-
-        # 准备训练数据集
-        if args.data_path and os.path.exists(args.data_path):
-            logger.info(f"使用数据文件: {args.data_path}")
-            dataset = fine_tuner.prepare_dataset(data_path=args.data_path)
-        else:
-            logger.info("使用默认示例数据")
-            dataset = fine_tuner.prepare_dataset()
-
-        # 训练模型
-        logger.info(f"开始训练，epochs={args.epochs}, batch_size={args.batch_size}")
-        fine_tuner.train(dataset, epochs=args.epochs, batch_size=args.batch_size)
-
-        logger.info(f"模型微调完成，已保存到: {args.output_dir}")
-
-        # 测试微调后的模型
-        test_prompts = [
-            "Python中for循环和while循环有什么区别？",
-            "人工智能在教育中有哪些应用？",
-            "什么是多模态交互？",
-            "PEPPER机器人在课堂上的优势是什么？"
-        ]
-
-        for prompt in test_prompts:
-            response = fine_tuner.generate_response(prompt)
-            logger.info(f"测试问题: {prompt}")
-            logger.info(f"模型回答: {response[:100]}...")
-            logger.info("-" * 50)
-    else:
-        logger.error("加载基础模型失败")
+    # 如果没有指定输出目录，自动生成带时间戳的目录
+    if args.output_dir is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        quantization_suffix = "_4bit" if use_4bit else "_8bit" if use_8bit else ""
+        args.output_dir = f"models/deepseek-{timestamp}{quantization_suffix}"
 
 
 if __name__ == "__main__":

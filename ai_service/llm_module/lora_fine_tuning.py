@@ -1,8 +1,5 @@
 """
 LoRA微调模块 - 用于PEPPER机器人教学系统的大语言模型微调
-
-该模块实现了基于教育领域知识的大语言模型微调功能
-使用LoRA (Low-Rank Adaptation) 技术，以低资源方式微调现有大模型
 """
 
 import logging
@@ -22,7 +19,8 @@ from transformers import (
     AutoTokenizer,
     TrainingArguments,
     Trainer,
-    DataCollatorForLanguageModeling
+    DataCollatorForLanguageModeling,
+    BitsAndBytesConfig
 )
 
 # 配置日志
@@ -53,7 +51,6 @@ class LoRAFineTuner:
         else:
             self.output_dir = output_dir
 
-        self.output_dir = output_dir
         self.lora_r = lora_r
         self.lora_alpha = lora_alpha
         self.lora_dropout = lora_dropout
@@ -64,8 +61,9 @@ class LoRAFineTuner:
 
         # 确保输出目录存在
         os.makedirs(output_dir, exist_ok=True)
+        logger.info(f"模型将保存到: {self.output_dir}")
 
-    def load_base_model(self, use_8bit=True):
+    def load_base_model(self, use_4bit=True, use_8bit=False):
         """加载基础模型"""
         logger.info(f"正在加载基础模型: {self.base_model_path}")
 
@@ -79,55 +77,96 @@ class LoRAFineTuner:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
+        # 确定设备和数据类型
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+
+        logger.info(f"使用设备: {device}, 数据类型: {dtype}")
+
+        # 配置量化参数
+        quantization_config = None
+
+        if device == "cuda" and (use_4bit or use_8bit):
+            try:
+                if use_4bit:
+                    logger.info("使用4bit量化配置")
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_quant_type="nf4",  # 使用NF4量化类型
+                        bnb_4bit_compute_dtype=torch.float16,  # 计算时使用float16
+                        bnb_4bit_use_double_quant=True,  # 双重量化，进一步节省内存
+                    )
+                elif use_8bit:
+                    logger.info("使用8bit量化配置")
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_8bit=True,
+                    )
+            except Exception as e:
+                logger.warning(f"量化配置失败，将使用标准加载: {e}")
+                quantization_config = None
+
         # 加载模型
         load_kwargs = {
             "trust_remote_code": True,
-            "device_map": "auto" if self.device == "cuda" else None,
+            "torch_dtype": dtype,
         }
 
-        # 根据设备和配置决定模型加载方式
-        if self.device == "cuda":
-            if use_8bit:
-                load_kwargs["load_in_8bit"] = True
-            else:
-                load_kwargs["torch_dtype"] = torch.float16
+        # 添加量化配置
+        if quantization_config is not None:
+            load_kwargs["quantization_config"] = quantization_config
+            load_kwargs["device_map"] = "auto"
+        elif device == "cuda":
+            load_kwargs["device_map"] = "auto"
+            load_kwargs["torch_dtype"] = torch.float16
+        else:
+            load_kwargs["torch_dtype"] = torch.float32
 
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.base_model_path,
-            **load_kwargs
-        )
+            # 加载模型
+            try:
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    self.base_model_path,
+                    **load_kwargs
+                )
 
-        logger.info("基础模型加载完成")
+                # 如果使用CPU且没有量化，手动移动到设备
+                if device == "cpu" and quantization_config is None:
+                    self.model = self.model.to(device)
 
-        return True
+                logger.info("基础模型加载完成")
+
+                # 打印模型信息
+                if hasattr(self.model, 'get_memory_footprint'):
+                    memory_mb = self.model.get_memory_footprint() / 1024 / 1024
+                    logger.info(f"模型显存占用: {memory_mb:.2f} MB")
+
+                return True
+
+            except Exception as e:
+                logger.error(f"模型加载失败: {e}")
+                return False
 
     def prepare_lora_config(self):
         """准备LoRA配置"""
         logger.info("配置LoRA参数")
 
         # 为DeepSeek模型获取正确的目标模块
-        if hasattr(self.model, "config") and hasattr(self.model.config,
-                                                     "model_type") and self.model.config.model_type == "deepseek":
-            # DeepSeek模型的特定模块
-            target_modules = ["k_proj", "q_proj", "v_proj", "out_proj", "fc1", "fc2"]
+        if hasattr(self.model, "config") and hasattr(self.model.config,"model_type"):
+            model_type = self.model.config.model_type
+            logger.info(f"检测到模型类型: {model_type}")
+            if model_type == "deepseek":
+                # DeepSeek模型的特定模块
+                target_modules = ["k_proj", "q_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+            elif model_type in ["llama", "mistral"]:
+                # LLaMA/Mistral类型模型
+                target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+            else:
+                # 通用目标模块
+                target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
         else:
-            # 查找模型中包含的层
-            import re
-            target_modules = []
-            for name, _ in self.model.named_modules():
-                if any(re.search(pattern, name) for pattern in ["attention", "mlp", "dense", "linear"]):
-                    parts = name.split('.')
-                    if len(parts) > 1 and parts[-1] in ["query", "key", "value", "out_proj", "fc1", "fc2", "up_proj",
-                                                        "down_proj", "gate_proj"]:
-                        target_modules.append(parts[-1])
+        # 默认目标模块
+            target_modules = ["q_proj", "k_proj", "v_proj", "o_proj"]
 
-            # 如果没有找到任何目标模块，使用默认值
-            if not target_modules:
-                target_modules = ["query", "key", "value", "out_proj", "fc1", "fc2"]
-
-            # 去重
-            target_modules = list(set(target_modules))
-            logger.info(f"自动检测到的目标模块: {target_modules}")
+        logger.info(f"目标模块: {target_modules}")
 
         # 定义LoRA配置
         peft_config = LoraConfig(
@@ -136,18 +175,32 @@ class LoRAFineTuner:
             r=self.lora_r,
             lora_alpha=self.lora_alpha,
             lora_dropout=self.lora_dropout,
-            target_modules=target_modules
+            target_modules=target_modules,
+            bias="none",  # 不训练bias
+            modules_to_save=None,  # 不保存额外模块
         )
 
-        # 为量化训练准备模型（如果使用8bit）
+        # 为量化训练准备模型
         if hasattr(self.model, "is_loaded_in_8bit") and self.model.is_loaded_in_8bit:
+            logger.info("为8bit量化训练准备模型")
+            self.model = prepare_model_for_kbit_training(self.model)
+        elif hasattr(self.model, "is_loaded_in_4bit") and self.model.is_loaded_in_4bit:
+            logger.info("为4bit量化训练准备模型")
             self.model = prepare_model_for_kbit_training(self.model)
 
         # 应用LoRA配置
         self.peft_model = get_peft_model(self.model, peft_config)
 
-        # 打印模型训练信息
-        logger.info(f"可训练参数: {self.peft_model.print_trainable_parameters()}")
+        # 打印可训练参数信息
+        trainable_params = 0
+        all_param = 0
+        for _, param in self.peft_model.named_parameters():
+            all_param += param.numel()
+            if param.requires_grad:
+                trainable_params += param.numel()
+
+        logger.info(f"可训练参数: {trainable_params:,} / 总参数: {all_param:,} "
+                    f"({100 * trainable_params / all_param:.2f}%)")
 
         return self.peft_model
 
@@ -214,21 +267,39 @@ class LoRAFineTuner:
         """训练模型"""
         logger.info("开始训练过程")
 
+        # 根据是否使用量化调整训练参数
+        if hasattr(self.model, "is_loaded_in_4bit") and self.model.is_loaded_in_4bit:
+            logger.info("使用4bit量化训练配置")
+            # 4bit训练建议使用更小的batch size和更大的gradient accumulation
+            if batch_size > 2:
+                batch_size = 2
+                logger.info("4bit训练建议batch_size设置为2")
+            gradient_accumulation_steps = 8  # 增加梯度累积步数
+        elif hasattr(self.model, "is_loaded_in_8bit") and self.model.is_loaded_in_8bit:
+            logger.info("使用8bit量化训练配置")
+            gradient_accumulation_steps = 4
+        else:
+            gradient_accumulation_steps = 4
+
         # 定义训练参数
         training_args = TrainingArguments(
             output_dir=self.output_dir,
             num_train_epochs=epochs,
             per_device_train_batch_size=batch_size,
-            gradient_accumulation_steps=4,
+            gradient_accumulation_steps=gradient_accumulation_steps,
             learning_rate=learning_rate,
             weight_decay=0.01,
             warmup_steps=100,
             logging_steps=10,
-            save_steps=200,
-            save_total_limit=3,
+            save_steps=500,  # 增加保存间隔，减少IO
+            save_total_limit=2,  # 减少保存的检查点数量
             fp16=(self.device == "cuda"),  # 如果使用GPU则启用fp16
+            bf16=False,  # 对于量化训练，通常不使用bf16
             report_to="none",  # 禁用报告
-            remove_unused_columns=False  # 保留所有列
+            remove_unused_columns=False,  # 保留所有列
+            dataloader_pin_memory=False,  # 量化训练时关闭pin_memory
+            gradient_checkpointing=True,  # 启用梯度检查点节省内存
+            optim="adamw_torch",  # 使用标准AdamW优化器
         )
 
         # 创建数据收集器
@@ -248,44 +319,82 @@ class LoRAFineTuner:
 
         # 开始训练
         logger.info("开始LoRA微调训练")
-        trainer.train()
+        try:
+            trainer.train()
+        except Exception as e:
+            logger.error(f"训练过程中出错: {e}")
+            return False
 
-        # 保存模型
-        logger.info(f"保存微调后的模型到: {self.output_dir}")
-        self.peft_model.save_pretrained(self.output_dir)
-        self.tokenizer.save_pretrained(self.output_dir)
+        # 保存训练信息
+        training_info = {
+            "base_model": self.base_model_path,
+            "training_time": datetime.now().isoformat(),
+            "epochs": epochs,
+            "batch_size": batch_size,
+            "learning_rate": learning_rate,
+            "lora_r": self.lora_r,
+            "lora_alpha": self.lora_alpha,
+            "lora_dropout": self.lora_dropout,
+            "output_dir": self.output_dir,
+            "quantization": "4bit" if hasattr(self.model, "is_loaded_in_4bit") and self.model.is_loaded_in_4bit else
+            "8bit" if hasattr(self.model, "is_loaded_in_8bit") and self.model.is_loaded_in_8bit else "none",
+            "gradient_accumulation_steps": gradient_accumulation_steps,
+            "total_trainable_params": sum(p.numel() for p in self.peft_model.parameters() if p.requires_grad)
+        }
+
+        info_file = os.path.join(self.output_dir, "training_info.json")
+        import json
+        try:
+            with open(info_file, 'w', encoding='utf-8') as f:
+                json.dump(training_info, f, ensure_ascii=False, indent=2)
+            logger.info(f"训练信息已保存到: {info_file}")
+        except Exception as e:
+            logger.warning(f"保存训练信息失败: {e}")
 
         return True
 
     def generate_response(self, prompt, max_new_tokens=512):
         """使用微调后的模型生成回答"""
-        # 确保提示符格式正确
-        if not prompt.startswith("Human:"):
-            prompt = f"Human: {prompt}\n\nAssistant:"
+        if not self.peft_model:
+            logger.error("模型未加载")
+            return "模型未加载，无法生成回答"
+        try:
+            # 为DeepSeek模型调整提示格式
+            if not prompt.startswith("Human:"):
+                prompt = f"Human: {prompt}\n\nAssistant:"
 
-        input_ids = self.tokenizer(prompt, return_tensors="pt").input_ids.to(self.device)
+            # 编码输入
+            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
 
-        # 生成回答
-        with torch.no_grad():
-            outputs = self.peft_model.generate(
-                input_ids=input_ids,
-                max_new_tokens=max_new_tokens,
-                temperature=0.7,
-                top_p=0.9,
-                do_sample=True,
-                pad_token_id=self.tokenizer.pad_token_id
-            )
+            # 设置生成参数
+            gen_kwargs = {
+                "max_new_tokens": min(max_new_tokens, 512),
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "top_k": 50,
+                "do_sample": True,
+                "pad_token_id": self.tokenizer.eos_token_id,
+                "repetition_penalty": 1.1,  # 避免重复
+            }
 
-        # 解码输出
-        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            # 生成回答
+            with torch.no_grad():
+                output_ids = self.peft_model.generate(**inputs, **gen_kwargs)
 
-        # 提取回答部分
-        if "Assistant:" in response:
-            response = response.split("Assistant:", 1)[1].strip()
-        else:
-            response = response[len(prompt):].strip()
+            # 解码输出
+            full_output = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
 
-        return response
+            # 提取回答部分（去除提示部分）
+            if "Assistant:" in full_output:
+                response = full_output.split("Assistant:", 1)[1].strip()
+            else:
+                response = full_output[len(prompt):].strip()
+
+            return response
+
+        except Exception as e:
+            logger.error(f"生成回答失败: {e}")
+            return f"生成回答时出错: {str(e)}"
 
 
 # 当脚本直接运行时，执行示例训练过程

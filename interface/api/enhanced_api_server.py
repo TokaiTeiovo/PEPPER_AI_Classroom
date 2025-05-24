@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import sys
-import time
 import uuid
 from datetime import datetime
 
@@ -94,9 +93,32 @@ def load_model():
     """加载大语言模型"""
     try:
         data = request.json
-        model_path = data.get('model_path', 'models/deepseek-coder-1.3b-base')
+        # 修复：确保data不为空
+        if not data:
+            return jsonify({
+                "status": "error",
+                "message": "请求数据为空"
+            })
+        model_path = data.get('model_path', '')
+        use_4bit = data.get('use_4bit', True)  # 默认使用4bit量化
+        use_8bit = data.get('use_8bit', False)
+        logger.info(f"正在加载模型: {model_path}")
+
+        # 修复：检查model_path是否为空
+        if not model_path or model_path.strip() == '':
+            return jsonify({
+                "status": "error",
+                "message": "模型路径不能为空"
+            })
 
         logger.info(f"正在加载模型: {model_path}")
+
+        if use_4bit:
+            logger.info("使用4bit量化加载模型")
+        elif use_8bit:
+            logger.info("使用8bit量化加载模型")
+        else:
+            logger.info("使用全精度加载模型")
 
         if not os.path.exists(model_path):
             return jsonify({
@@ -104,21 +126,53 @@ def load_model():
                 "message": f"模型路径不存在: {model_path}"
             })
 
-        services['llm'] = LLMService(model_path)
-        system_status['model_loaded'] = True
+        # 修复：创建LLMService而不是LoRAFineTuner（用于推理）
+        try:
+            # 如果是微调后的模型，使用LoRAFineTuner
+            if 'deepseek-' in model_path and any(
+                    x in model_path for x in ['_4bit', '_8bit', '20241', '20242', '20243']):
+                logger.info("检测到微调模型，使用LoRA加载")
+                temp_fine_tuner = LoRAFineTuner(model_path)
+                success = temp_fine_tuner.load_base_model(use_4bit=use_4bit, use_8bit=use_8bit)
+                if success:
+                    services['llm'] = temp_fine_tuner
+            else:
+                # 原始模型，使用LLMService
+                logger.info("检测到原始模型，使用标准加载")
+                services['llm'] = LLMService(model_path)
+                success = True
 
-        logger.info("模型加载成功")
-        return jsonify({
-            "status": "success",
-            "message": "模型加载成功"
-        })
+        except Exception as e:
+            logger.error(f"模型创建失败: {e}")
+            return jsonify({
+                "status": "error",
+                "message": f"模型创建失败: {str(e)}"
+            })
+
+        if success:
+            system_status['model_loaded'] = True
+            system_status['model_path'] = model_path
+            system_status['model_quantization'] = '4bit' if use_4bit else '8bit' if use_8bit else 'full'
+
+            logger.info("模型加载成功")
+            return jsonify({
+                "status": "success",
+                "message": "模型加载成功",
+                "model_path": model_path,
+                "quantization": system_status['model_quantization']
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "模型加载失败"
+            })
 
     except Exception as e:
         logger.error(f"模型加载失败: {e}")
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        })
+    return jsonify({
+        "status": "error",
+        "message": f"模型加载失败: {str(e)}"
+    })
 
 
 @app.route('/api/unload_model', methods=['POST'])
@@ -154,7 +208,6 @@ def test_model():
 
         data = request.json
         question = data.get('question', '')
-        temperature = data.get('temperature', 0.7)
         max_tokens = data.get('max_tokens', 512)
 
         if not question.strip():
@@ -163,12 +216,17 @@ def test_model():
                 "message": "问题不能为空"
             })
 
-        # 生成回答
-        response = services['llm'].generate_response(question, max_tokens)
+        # 使用LoRAFineTuner的generate_response方法
+        if hasattr(services['llm'], 'generate_response'):
+            response = services['llm'].generate_response(question, max_tokens)
+        else:
+            # fallback到原来的方法
+            response = services['llm'].generate_response(question, max_tokens)
 
         return jsonify({
             "status": "success",
-            "response": response
+            "response": response,
+            "model_quantization": system_status.get('model_quantization', 'unknown')
         })
 
     except Exception as e:
@@ -178,6 +236,73 @@ def test_model():
             "message": str(e)
         })
 
+# 新增：检查量化库安装状态
+@app.route('/api/check_quantization_support', methods=['GET'])
+def check_quantization_support():
+    """检查量化训练支持情况"""
+    try:
+        support_info = {
+            "bitsandbytes_available": False,
+            "accelerate_available": False,
+            "peft_available": False,
+            "torch_version": "",
+            "cuda_version": "",
+            "recommendations": []
+        }
+
+        # 检查必要的库
+        try:
+            import bitsandbytes
+            support_info["bitsandbytes_available"] = True
+            support_info["bitsandbytes_version"] = bitsandbytes.__version__
+        except ImportError:
+            support_info["recommendations"].append("需要安装bitsandbytes: pip install bitsandbytes")
+
+        try:
+            import accelerate
+            support_info["accelerate_available"] = True
+            support_info["accelerate_version"] = accelerate.__version__
+        except ImportError:
+            support_info["recommendations"].append("需要安装accelerate: pip install accelerate")
+
+        try:
+            import peft
+            support_info["peft_available"] = True
+            support_info["peft_version"] = peft.__version__
+        except ImportError:
+            support_info["recommendations"].append("需要安装peft: pip install peft")
+
+        # 检查PyTorch版本
+        try:
+            import torch
+            support_info["torch_version"] = torch.__version__
+            support_info["cuda_version"] = torch.version.cuda if torch.cuda.is_available() else "Not available"
+        except ImportError:
+            support_info["recommendations"].append("需要安装PyTorch")
+
+        # 判断是否支持量化训练
+        quantization_ready = (
+                support_info["bitsandbytes_available"] and
+                support_info["accelerate_available"] and
+                support_info["peft_available"]
+        )
+
+        support_info["quantization_ready"] = quantization_ready
+
+        if not quantization_ready:
+            support_info["recommendations"].append("安装命令: pip install bitsandbytes accelerate peft")
+
+        return jsonify({
+            "status": "success",
+            "support_info": support_info
+        })
+
+    except Exception as e:
+        logger.error(f"检查量化支持失败: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        })
 
 @app.route('/api/start_finetuning', methods=['POST'])
 def start_finetuning():
@@ -192,6 +317,9 @@ def start_finetuning():
         file = request.files['training_data']
         epochs = int(request.form.get('epochs', 3))
         learning_rate = float(request.form.get('learning_rate', 0.0002))
+        batch_size = int(request.form.get('batch_size', 2))  # 4bit训练默认batch_size=2
+        use_4bit = request.form.get('use_4bit', 'true').lower() == 'true'
+        use_8bit = request.form.get('use_8bit', 'false').lower() == 'true'
 
         if file.filename == '':
             return jsonify({
@@ -204,32 +332,86 @@ def start_finetuning():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
 
-        # 创建微调器
-        services['fine_tuner'] = LoRAFineTuner()
+        # 生成带时间戳的输出目录
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        quantization_suffix = "_4bit" if use_4bit else "_8bit" if use_8bit else ""
+        output_dir = f"models/deepseek-{timestamp}{quantization_suffix}"
 
-        # 开始微调（这里简化为模拟过程）
+        # 创建微调器
+        services['fine_tuner'] = LoRAFineTuner(output_dir=output_dir)
+
+        # 记录训练信息到系统状态
+        system_status['training_output_dir'] = output_dir
+        system_status['training_start_time'] = datetime.now().isoformat()
         system_status['training_active'] = True
         system_status['training_progress'] = 0
+        system_status['training_config'] = {
+            'epochs': epochs,
+            'batch_size': batch_size,
+            'learning_rate': learning_rate,
+            'use_4bit': use_4bit,
+            'use_8bit': use_8bit,
+            'quantization': '4bit' if use_4bit else '8bit' if use_8bit else 'none'
+        }
 
-        # 实际项目中这里应该启动异步训练任务
-        # 这里只是模拟进度更新
+        # 启动异步训练任务
         import threading
-        def simulate_training():
-            for i in range(101):
-                if not system_status['training_active']:
-                    break
-                system_status['training_progress'] = i
-                time.sleep(0.1)
-            system_status['training_active'] = False
+        def run_training():
+            try:
+                logger.info(f"开始4bit量化训练，模型将保存到: {output_dir}")
 
-        thread = threading.Thread(target=simulate_training)
+                # 加载基础模型
+                success = services['fine_tuner'].load_base_model(use_4bit=use_4bit, use_8bit=use_8bit)
+                if not success:
+                    system_status['training_active'] = False
+                    system_status['training_error'] = "模型加载失败"
+                    return
+
+                # 准备LoRA配置
+                services['fine_tuner'].prepare_lora_config()
+
+                # 准备数据集
+                dataset = services['fine_tuner'].prepare_dataset(data_path=filepath)
+
+                # 开始训练
+                system_status['training_progress'] = 10
+                success = services['fine_tuner'].train(
+                    dataset,
+                    epochs=epochs,
+                    batch_size=batch_size,
+                    learning_rate=learning_rate
+                )
+
+                if success:
+                    system_status['training_progress'] = 100
+                    system_status['training_end_time'] = datetime.now().isoformat()
+                    logger.info(f"4bit量化训练完成，模型已保存到: {output_dir}")
+                else:
+                    system_status['training_error'] = "训练过程失败"
+
+            except Exception as e:
+                logger.error(f"训练过程出错: {e}")
+                system_status['training_error'] = str(e)
+            finally:
+                system_status['training_active'] = False
+                # 清理临时文件
+                try:
+                    os.remove(filepath)
+                except:
+                    pass
+
+        # 启动训练线程
+        thread = threading.Thread(target=run_training)
         thread.daemon = True
         thread.start()
 
-        logger.info("LoRA微调已开始")
+        logger.info(f"4bit量化LoRA微调已开始，输出目录: {output_dir}")
         return jsonify({
             "status": "success",
-            "message": "微调已开始"
+            "message": "4bit量化微调已开始",
+            "output_dir": output_dir,
+            "timestamp": timestamp,
+            "config": system_status['training_config']
         })
 
     except Exception as e:
@@ -242,13 +424,131 @@ def start_finetuning():
 
 @app.route('/api/training_progress', methods=['GET'])
 def get_training_progress():
-    """获取训练进度"""
-    return jsonify({
+    """获取训练进度，包含更详细的信息"""
+    progress_info = {
         "status": "success",
         "progress": system_status['training_progress'],
-        "active": system_status['training_active']
-    })
+        "active": system_status['training_active'],
+        "output_dir": system_status.get('training_output_dir', ''),
+        "start_time": system_status.get('training_start_time', ''),
+        "config": system_status.get('training_config', {}),
+    }
 
+    # 添加结束时间（如果有）
+    if 'training_end_time' in system_status:
+        progress_info["end_time"] = system_status['training_end_time']
+
+    # 添加错误信息（如果有）
+    if 'training_error' in system_status:
+        progress_info["error"] = system_status['training_error']
+
+    # 计算预估剩余时间
+    if system_status['training_active'] and 'training_start_time' in system_status:
+        try:
+            start_time = datetime.fromisoformat(system_status['training_start_time'])
+            elapsed_time = (datetime.now() - start_time).total_seconds()
+            progress = system_status['training_progress']
+
+            if progress > 0:
+                estimated_total_time = elapsed_time * 100 / progress
+                remaining_time = estimated_total_time - elapsed_time
+                progress_info["estimated_remaining_seconds"] = max(0, int(remaining_time))
+        except:
+            pass
+
+    return jsonify(progress_info)
+
+
+@app.route('/api/get_quantization_info', methods=['GET'])
+def get_quantization_info():
+    """获取量化训练信息和建议"""
+    try:
+        import torch
+
+        # 检查CUDA和GPU信息
+        cuda_available = torch.cuda.is_available()
+        gpu_info = {}
+
+        if cuda_available:
+            gpu_info = {
+                "gpu_count": torch.cuda.device_count(),
+                "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.device_count() > 0 else "Unknown",
+                "gpu_memory_gb": round(torch.cuda.get_device_properties(0).total_memory / 1024 ** 3, 2) if torch.cuda.device_count() > 0 else 0
+            }
+
+        # 根据GPU内存给出建议
+        recommendations = {
+            "use_4bit": True,  # 默认推荐4bit
+            "use_8bit": False,
+            "recommended_batch_size": 2,
+            "reason": "默认推荐4bit量化以获得最佳内存效率"
+        }
+
+        if cuda_available and gpu_info.get("gpu_memory_gb", 0) > 0:
+            gpu_memory = gpu_info["gpu_memory_gb"]
+
+            if gpu_memory >= 24:
+                recommendations = {
+                    "use_4bit": False,
+                    "use_8bit": False,
+                    "recommended_batch_size": 8,
+                    "reason": f"GPU内存充足({gpu_memory}GB)，可使用全精度训练"
+                }
+            elif gpu_memory >= 16:
+                recommendations = {
+                    "use_4bit": False,
+                    "use_8bit": True,
+                    "recommended_batch_size": 4,
+                    "reason": f"GPU内存较充足({gpu_memory}GB)，推荐8bit量化"
+                }
+            elif gpu_memory >= 8:
+                recommendations = {
+                    "use_4bit": True,
+                    "use_8bit": False,
+                    "recommended_batch_size": 2,
+                    "reason": f"GPU内存中等({gpu_memory}GB)，推荐4bit量化"
+                }
+            else:
+                recommendations = {
+                    "use_4bit": True,
+                    "use_8bit": False,
+                    "recommended_batch_size": 1,
+                    "reason": f"GPU内存较少({gpu_memory}GB)，强烈推荐4bit量化，batch_size=1"
+                }
+
+        return jsonify({
+            "status": "success",
+            "cuda_available": cuda_available,
+            "gpu_info": gpu_info,
+            "recommendations": recommendations,
+            "quantization_options": {
+                "4bit": {
+                    "description": "4bit量化，最节省内存",
+                    "memory_reduction": "约75%",
+                    "speed": "较快",
+                    "quality": "轻微损失"
+                },
+                "8bit": {
+                    "description": "8bit量化，平衡性能和内存",
+                    "memory_reduction": "约50%",
+                    "speed": "中等",
+                    "quality": "几乎无损失"
+                },
+                "full": {
+                    "description": "全精度训练，最高质量",
+                    "memory_reduction": "0%",
+                    "speed": "最快",
+                    "quality": "无损失"
+                }
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"获取量化信息失败: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        })
 
 @app.route('/api/discover_models', methods=['GET'])
 def discover_models():

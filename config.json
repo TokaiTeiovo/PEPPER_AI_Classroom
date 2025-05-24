@@ -11,17 +11,21 @@
   },
   "llm": {
     "model_path": "models/deepseek-coder-1.3b-base",
-    "use_gpu": false,
-    "device": "cpu",
+    "use_gpu": true,
+    "device": "auto",
     "max_tokens": 512,
     "temperature": 0.7,
     "fine_tuning": {
       "enabled": true,
+      "use_4bit_quantization": true,
+      "use_8bit_quantization": false,
       "lora_r": 16,
       "lora_alpha": 32,
       "lora_dropout": 0.05,
       "epochs": 3,
-      "learning_rate": 0.0002
+      "batch_size": 2,
+      "learning_rate": 0.0002,
+      "gradient_accumulation_steps": 8
     }
   },
   "knowledge_graph": {
