@@ -1,24 +1,87 @@
 {
-  "robot": {
-    "ip": "127.0.0.1",
-    "port": 9559,
-    "simulation_mode": true
+  "system": {
+    "name": "PEPPER智能教学系统",
+    "version": "1.0.0",
+    "debug": false
   },
-  "knowledge_graph": {
-    "uri": "bolt://localhost:7687",
-    "user": "neo4j",
-    "password": "admin123"
+  "server": {
+    "host": "localhost",
+    "port": 5000,
+    "auto_open_browser": true
   },
   "llm": {
     "model_path": "models/deepseek-coder-1.3b-base",
-    "use_8bit": true
+    "use_gpu": false,
+    "device": "cpu",
+    "max_tokens": 512,
+    "temperature": 0.7,
+    "fine_tuning": {
+      "enabled": true,
+      "lora_r": 16,
+      "lora_alpha": 32,
+      "lora_dropout": 0.05,
+      "epochs": 3,
+      "learning_rate": 0.0002
+    }
+  },
+  "knowledge_graph": {
+    "neo4j": {
+      "uri": "bolt://localhost:7687",
+      "user": "neo4j",
+      "password": "admin123",
+      "auto_connect": false
+    },
+    "education_domains": [
+      "Python编程",
+      "人工智能",
+      "数学",
+      "物理",
+      "机器学习"
+    ]
+  },
+  "multimodal": {
+    "speech_recognition": {
+      "enabled": true,
+      "language": "zh-CN",
+      "confidence_threshold": 0.7
+    },
+    "image_recognition": {
+      "enabled": true,
+      "model": "google/vit-base-patch16-224",
+      "confidence_threshold": 0.8
+    },
+    "text_processing": {
+      "enabled": true,
+      "keyword_count": 5,
+      "supported_languages": ["zh", "en"]
+    }
+  },
+  "teaching": {
+    "personalization": {
+      "enabled": true,
+      "learning_styles": ["visual", "auditory", "reading", "kinesthetic"],
+      "recommendation_count": 5
+    },
+    "student_management": {
+      "auto_create_profiles": true,
+      "save_interactions": true,
+      "generate_reports": true
+    }
   },
   "data_paths": {
     "student_profiles": "data/student_profiles",
     "course_materials": "data/course_materials",
-    "learning_analytics": "data/learning_analytics"
+    "learning_analytics": "data/learning_analytics",
+    "uploads": "uploads",
+    "reports": "reports",
+    "logs": "logs"
   },
-  "websocket": {
-    "url": "ws://localhost:8765"
+  "security": {
+    "upload_max_size": 16777216,
+    "allowed_extensions": {
+      "images": [".jpg", ".jpeg", ".png", ".gif"],
+      "audio": [".wav", ".mp3", ".m4a"],
+      "data": [".json", ".csv", ".txt"]
+    }
   }
 }
