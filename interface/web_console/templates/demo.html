@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>PEPPER智能教学系统 - 内存管理增强版</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #2f3542;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            color: #2f3542;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            text-align: center;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            backdrop-filter: blur(10px);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .nav-tabs {
+            display: flex;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+        }
+
+        .nav-tab {
+            flex: 1;
+            padding: 20px 30px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: 600;
+            border-bottom: 4px solid transparent;
+            transition: all 0.3s ease;
+            color: #57606f;
+        }
+
+        .nav-tab.active {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-bottom-color: #ffffff;
+        }
+
+        .nav-tab:hover:not(.active) {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            backdrop-filter: blur(10px);
+        }
+
+        .panel h2 {
+            color: #2f3542;
+            margin-bottom: 25px;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+        }
+
+        .memory-card {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .memory-card h3 {
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .memory-value {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .memory-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .memory-bar-fill {
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            transition: width 0.3s ease;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #667eea;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #57606f;
+            font-size: 14px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            background: #a4b0be;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #ff9f43, #ff7675);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ff4757, #ff6b7a);
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            padding: 10px 18px;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .status-online {
+            background: linear-gradient(135deg, #2ed573, #17d0aa);
+            color: white;
+        }
+
+        .status-offline {
+            background: linear-gradient(135deg, #ff4757, #ff6b7a);
+            color: white;
+        }
+
+        .quantization-options {
+            margin-bottom: 20px;
+        }
+
+        .radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .radio-option {
+            display: flex;
+            align-items: flex-start;
+            padding: 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        .radio-option:hover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .radio-option input[type="radio"] {
+            margin-right: 12px;
+            margin-top: 2px;
+            width: auto;
+        }
+
+        .radio-option:has(input:checked) {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+        }
+
+        .radio-label {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .radio-label strong {
+            font-size: 15px;
+            color: #2f3542;
+        }
+
+        .radio-label small {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .file-upload {
+            border: 3px dashed #e1e5e9;
+            border-radius: 12px;
+            padding: 50px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .file-upload:hover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 25px;
+            background: #e1e5e9;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s ease;
+            border-radius: 15px;
+        }
+
+        .progress-container {
+            position: relative;
+        }
+
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 8px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .model-selector-container {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .model-select {
+            flex: 1;
+        }
+
+        .btn-scan {
+            padding: 15px 20px;
+            white-space: nowrap;
+        }
+
+        .scan-status {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 8px;
+            font-size: 13px;
+            border-left: 4px solid #667eea;
+        }
+
+        .chat-container {
+            height: 400px;
+            border: 2px solid #e1e5e9;
+            border-radius: 12px;
+            overflow-y: auto;
+            padding: 20px;
+            background: rgba(248, 249, 255, 0.8);
+            backdrop-filter: blur(5px);
+        }
+
+        .chat-message {
+            margin-bottom: 18px;
+            padding: 15px;
+            border-radius: 15px;
+            max-width: 85%;
+            word-wrap: break-word;
+        }
+
+        .chat-user {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 5px;
+        }
+
+        .chat-assistant {
+            background: white;
+            border: 1px solid #e1e5e9;
+            color: #2f3542;
+            border-bottom-left-radius: 5px;
+        }
+
+        .log-container {
+            background: #2f3542;
+            color: #ffffff;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            padding: 20px;
+            border-radius: 12px;
+            height: 300px;
+            overflow-y: auto;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-size: 14px;
+        }
+
+        .alert-info {
+            background: rgba(102, 126, 234, 0.1);
+            border: 1px solid #667eea;
+            color: #667eea;
+        }
+
+        .alert-warning {
+            background: rgba(255, 159, 67, 0.1);
+            border: 1px solid #ff9f43;
+            color: #ff9f43;
+        }
+
+        .alert-success {
+            background: rgba(46, 213, 115, 0.1);
+            border: 1px solid #2ed573;
+            color: #2ed573;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2, .grid-3 {
+                grid-template-columns: 1fr;
+            }
+
+            .nav-tabs {
+                flex-direction: column;
+            }
+
+            .model-selector-container {
+                flex-direction: column;
+            }
+
+            .btn-scan {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 PEPPER智能教学系统</h1>
+            <p>内存管理与自动清理增强版</p>
+        </div>
+
+        <!-- 导航标签 -->
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="showTab('memory')">🧠 内存监控</button>
+            <button class="nav-tab" onclick="showTab('training')">🎯 模型训练</button>
+            <button class="nav-tab" onclick="showTab('chat')">💬 智能问答</button>
+        </div>
+
+        <!-- 内存监控标签页 -->
+        <div id="memory" class="tab-content active">
+            <!-- 系统内存状态 -->
+            <div class="panel">
+                <h2>💾 系统内存状态</h2>
+                <div class="grid-3">
+                    <div class="memory-card">
+                        <h3>CPU 内存</h3>
+                        <div class="memory-value" id="cpu-memory-used">--</div>
+                        <div style="font-size: 0.9em;" id="cpu-memory-total">总计: -- GB</div>
+                        <div class="memory-bar">
+                            <div class="memory-bar-fill" id="cpu-memory-bar"></div>
+                        </div>
+                    </div>
+
+                    <div class="memory-card">
+                        <h3>GPU 内存</h3>
+                        <div class="memory-value" id="gpu-memory-used">--</div>
+                        <div style="font-size: 0.9em;" id="gpu-memory-total">总计: -- GB</div>
+                        <div class="memory-bar">
+                            <div class="memory-bar-fill" id="gpu-memory-bar"></div>
+                        </div>
+                    </div>
+
+                    <div class="memory-card">
+                        <h3>模型状态</h3>
+                        <div style="font-size: 1.2em;" id="model-status-text">无模型</div>
+                        <div style="font-size: 0.9em; margin-top: 5px;">
+                            <div id="inference-status">推理: 未加载</div>
+                            <div id="training-status">训练: 未进行</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <button onclick="refreshMemoryInfo()">🔄 刷新内存信息</button>
+                    <button onclick="forceGarbageCollection()" class="btn-warning">🗑️ 强制垃圾回收</button>
+                </div>
+            </div>
+
+            <!-- 自动清理设置 -->
+            <div class="panel">
+                <h2>⚙️ 自动清理设置</h2>
+
+                <div class="form-group">
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <label style="margin: 0;">训练完成后自动清理模型内存</label>
+                        <label class="switch">
+                            <input type="checkbox" id="auto-cleanup-switch" checked onchange="toggleAutoCleanup()">
+                            <span class="slider"></span>
+                        </label>
+                        <span id="auto-cleanup-status" style="color: #2ed573; font-weight: 600;">已启用</span>
+                    </div>
+                </div>
+
+                <div class="alert alert-info">
+                    <strong>💡 说明：</strong><br>
+                    • 启用后，训练完成会自动清理训练模型，释放内存<br>
+                    • 推理模型不受影响，可以继续正常使用<br>
+                    • 禁用后需要手动清理内存
+                </div>
+
+                <div class="form-group">
+                    <button onclick="manualCleanup()" class="btn-danger">🧹 手动清理所有模型</button>
+                    <button onclick="showMemoryTips()">💡 内存优化建议</button>
+                </div>
+            </div>
+
+            <!-- 内存使用详情 -->
+            <div class="panel">
+                <h2>📊 内存使用详情</h2>
+                <div id="memory-details">
+                    <div class="alert alert-info">
+                        点击"刷新内存信息"获取详细内存使用情况
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 模型训练标签页 -->
+        <div id="training" class="tab-content">
+            <div class="grid-2">
+                <div class="panel">
+                    <h2>🎯 LoRA训练</h2>
+
+                    <div class="form-group">
+                        <label>训练状态</label>
+                        <div class="status-indicator status-offline" id="training-status-indicator">
+                            ● 未开始训练
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>训练进度</label>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="training-progress" style="width: 0%"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 13px; color: #666;">
+                            <span id="progress-text">0%</span>
+                            <span id="progress-time"></span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <div id="training-info" class="alert alert-info" style="display: none;">
+                            <div><strong>模型路径:</strong> <span id="training-model-path">-</span></div>
+                            <div><strong>量化方式:</strong> <span id="training-quantization">-</span></div>
+                            <div><strong>预计剩余:</strong> <span id="training-remaining">-</span></div>
+                            <div><strong>自动清理:</strong> <span id="training-auto-cleanup">-</span></div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <button onclick="checkTrainingStatus()">📊 检查训练状态</button>
+                        <button onclick="stopTraining()" class="btn-danger" disabled id="stop-training-btn">🛑 停止训练</button>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h2>📈 训练监控</h2>
+
+                    <div id="training-monitor">
+                        <div class="alert alert-info">
+                            训练开始后将显示详细监控信息
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>内存监控（训练期间）</label>
+                        <div style="display: flex; gap: 10px; margin-top: 10px;">
+                            <div style="flex: 1; text-align: center; padding: 10px; background: rgba(102, 126, 234, 0.1); border-radius: 8px;">
+                                <div style="font-size: 0.9em; color: #666;">GPU使用</div>
+                                <div style="font-size: 1.5em; font-weight: bold;" id="training-gpu-usage">--%</div>
+                            </div>
+                            <div style="flex: 1; text-align: center; padding: 10px; background: rgba(102, 126, 234, 0.1); border-radius: 8px;">
+                                <div style="font-size: 0.9em; color: #666;">预计完成</div>
+                                <div style="font-size: 1.5em; font-weight: bold;" id="training-eta">--:--</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 智能问答标签页 -->
+        <div id="chat" class="tab-content">
+            <div class="grid-2">
+                <div class="panel">
+                    <h2>🤖 模型加载</h2>
+
+                    <div class="form-group">
+                        <label>推理模型状态</label>
+                        <div class="status-indicator status-offline" id="inference-model-status">
+                            ● 模型未加载
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <button onclick="loadInferenceModel()" id="load-inference-btn">📥 加载推理模型</button>
+                        <button onclick="unloadInferenceModel()" class="btn-warning">📤 卸载推理模型</button>
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <strong>⚠️ 注意：</strong><br>
+                        训练期间推理模型会被自动卸载以节省内存。<br>
+                        训练完成后可重新加载进行推理。
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <h2>💬 模型测试</h2>
+
+                    <div class="form-group">
+                        <label>测试问题</label>
+                        <textarea id="test-question" rows="3" placeholder="输入测试问题..." style="width: 100%; padding: 12px; border: 2px solid #e1e5e9; border-radius: 8px;"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <button onclick="testModel()">🧪 测试模型</button>
+                    </div>
+
+                    <div class="form-group">
+                        <label>模型回答</label>
+                        <div id="model-response" style="background: rgba(248, 249, 255, 0.8); padding: 15px; border-radius: 8px; min-height: 100px;">
+                            等待测试...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 系统日志 -->
+        <div class="panel">
+            <h2>📝 系统日志与状态</h2>
+            <div class="log-container" id="system-log">
+                [系统] PEPPER智能教学系统已启动，内存管理功能已启用
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let memoryRefreshInterval = null;
+        let trainingMonitorInterval = null;
+        let autoCleanupEnabled = true;
+
+        // 日志记录
+        function logMessage(level, message) {
+            const logContainer = document.getElementById('system-log');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] [${level.toUpperCase()}] ${message}\n`;
+            logContainer.textContent += logEntry;
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // 标签页切换
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+
+            logMessage('info', `切换到${getTabName(tabName)}页面`);
+
+            // 如果切换到内存监控页面，自动刷新内存信息
+            if (tabName === 'memory') {
+                refreshMemoryInfo();
+                startMemoryMonitoring();
+            } else {
+                stopMemoryMonitoring();
+            }
+        }
+
+        function getTabName(tabName) {
+            const names = {
+                'memory': '内存监控',
+                'training': '模型训练',
+                'chat': '智能问答'
+            };
+            return names[tabName] || tabName;
+        }
+
+        // API调用函数
+        async function callAPI(endpoint, method = 'GET', data = null) {
+            try {
+                const options = {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                };
+
+                if (data) {
+                    if (data instanceof FormData) {
+                        delete options.headers['Content-Type'];
+                        options.body = data;
+                    } else {
+                        options.body = JSON.stringify(data);
+                    }
+                }
+
+                const response = await fetch(`/api/${endpoint}`, options);
+                return await response.json();
+            } catch (error) {
+                logMessage('error', `API调用失败: ${error.message}`);
+                return { status: 'error', message: error.message };
+            }
+        }
+
+        // ======================== 内存监控功能 ========================
+
+        // 刷新内存信息
+        async function refreshMemoryInfo() {
+            try {
+                const result = await callAPI('system_memory_info');
+
+                if (result.status === 'success') {
+                    const memoryInfo = result.memory_info;
+
+                    // 更新CPU内存
+                    if (memoryInfo.cpu_memory) {
+                        const cpu = memoryInfo.cpu_memory;
+                        document.getElementById('cpu-memory-used').textContent = `${cpu.used_gb} GB`;
+                        document.getElementById('cpu-memory-total').textContent = `总计: ${cpu.total_gb} GB`;
+                        document.getElementById('cpu-memory-bar').style.width = `${cpu.percent}%`;
+                    }
+
+                    // 更新GPU内存
+                    if (memoryInfo.gpu_memory && memoryInfo.gpu_memory.available !== false) {
+                        const gpu = memoryInfo.gpu_memory;
+                        document.getElementById('gpu-memory-used').textContent = `${gpu.cached_gb} GB`;
+                        document.getElementById('gpu-memory-total').textContent = `总计: ${gpu.total_gb} GB`;
+                        const gpuPercent = (gpu.cached_gb / gpu.total_gb) * 100;
+                        document.getElementById('gpu-memory-bar').style.width = `${gpuPercent}%`;
+                    } else {
+                        document.getElementById('gpu-memory-used').textContent = '不可用';
+                        document.getElementById('gpu-memory-total').textContent = '无GPU';
+                        document.getElementById('gpu-memory-bar').style.width = '0%';
+                    }
+
+                    // 更新模型状态
+                    if (memoryInfo.model_status) {
+                        const status = memoryInfo.model_status;
+                        let statusText = '';
+
+                        if (status.inference_model_loaded && status.training_model_loaded) {
+                            statusText = '双模型';
+                        } else if (status.inference_model_loaded) {
+                            statusText = '推理模型';
+                        } else if (status.training_model_loaded) {
+                            statusText = '训练模型';
+                        } else {
+                            statusText = '无模型';
+                        }
+
+                        document.getElementById('model-status-text').textContent = statusText;
+                        document.getElementById('inference-status').textContent =
+                            `推理: ${status.inference_model_loaded ? '已加载' : '未加载'}`;
+                        document.getElementById('training-status').textContent =
+                            `训练: ${status.training_active ? '进行中' : '未进行'}`;
+                    }
+
+                    // 更新详细信息
+                    updateMemoryDetails(memoryInfo);
+
+                    logMessage('info', '内存信息已刷新');
+                } else {
+                    logMessage('error', `获取内存信息失败: ${result.message}`);
+                }
+            } catch (error) {
+                logMessage('error', `刷新内存信息失败: ${error.message}`);
+            }
+        }
+
+        // 更新内存详情显示
+        function updateMemoryDetails(memoryInfo) {
+            const detailsDiv = document.getElementById('memory-details');
+
+            let html = '<div class="grid-2" style="gap: 15px;">';
+
+            // CPU内存详情
+            if (memoryInfo.cpu_memory) {
+                const cpu = memoryInfo.cpu_memory;
+                html += `
+                    <div style="padding: 15px; background: rgba(102, 126, 234, 0.05); border-radius: 8px;">
+                        <h4 style="margin-bottom: 10px; color: #667eea;">💻 CPU内存</h4>
+                        <div>总内存: ${cpu.total_gb} GB</div>
+                        <div>已使用: ${cpu.used_gb} GB (${cpu.percent}%)</div>
+                        <div>可用: ${cpu.available_gb} GB</div>
+                    </div>
+                `;
+            }
+
+            // GPU内存详情
+            if (memoryInfo.gpu_memory && memoryInfo.gpu_memory.available !== false) {
+                const gpu = memoryInfo.gpu_memory;
+                html += `
+                    <div style="padding: 15px; background: rgba(46, 213, 115, 0.05); border-radius: 8px;">
+                        <h4 style="margin-bottom: 10px; color: #2ed573;">🎮 GPU内存</h4>
+                        <div>总显存: ${gpu.total_gb} GB</div>
+                        <div>已分配: ${gpu.allocated_gb} GB</div>
+                        <div>已缓存: ${gpu.cached_gb} GB</div>
+                        <div>可用: ${gpu.free_gb} GB</div>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div style="padding: 15px; background: rgba(255, 159, 67, 0.05); border-radius: 8px;">
+                        <h4 style="margin-bottom: 10px; color: #ff9f43;">🎮 GPU内存</h4>
+                        <div>GPU不可用或未检测到CUDA设备</div>
+                    </div>
+                `;
+            }
+
+            html += '</div>';
+            detailsDiv.innerHTML = html;
+        }
+
+        // 开始内存监控
+        function startMemoryMonitoring() {
+            if (memoryRefreshInterval) {
+                clearInterval(memoryRefreshInterval);
+            }
+
+            memoryRefreshInterval = setInterval(() => {
+                refreshMemoryInfo();
+            }, 5000); // 每5秒刷新一次
+
+            logMessage('info', '内存监控已启动（每5秒刷新）');
+        }
+
+        // 停止内存监控
+        function stopMemoryMonitoring() {
+            if (memoryRefreshInterval) {
+                clearInterval(memoryRefreshInterval);
+                memoryRefreshInterval = null;
+                logMessage('info', '内存监控已停止');
+            }
+        }
+
+        // 强制垃圾回收
+        async function forceGarbageCollection() {
+            try {
+                logMessage('info', '执行强制垃圾回收...');
+                const result = await callAPI('manual_cleanup', 'POST');
+
+                if (result.status === 'success') {
+                    logMessage('success', `垃圾回收完成: ${result.details.join(', ')}`);
+                    alert(`垃圾回收完成！\n\n${result.details.join('\n')}`);
+
+                    // 刷新内存信息
+                    setTimeout(refreshMemoryInfo, 1000);
+                } else {
+                    logMessage('error', `垃圾回收失败: ${result.message}`);
+                    alert(`垃圾回收失败: ${result.message}`);
+                }
+            } catch (error) {
+                logMessage('error', `垃圾回收出错: ${error.message}`);
+                alert(`垃圾回收出错: ${error.message}`);
+            }
+        }
+
+        // 切换自动清理
+        async function toggleAutoCleanup() {
+            const switchElement = document.getElementById('auto-cleanup-switch');
+            const statusElement = document.getElementById('auto-cleanup-status');
+
+            const enabled = switchElement.checked;
+
+            try {
+                const result = await callAPI('toggle_auto_cleanup', 'POST', { enabled: enabled });
+
+                if (result.status === 'success') {
+                    autoCleanupEnabled = enabled;
+                    statusElement.textContent = enabled ? '已启用' : '已禁用';
+                    statusElement.style.color = enabled ? '#2ed573' : '#ff4757';
+
+                    logMessage('info', `自动清理功能已${enabled ? '启用' : '禁用'}`);
+                } else {
+                    // 恢复开关状态
+                    switchElement.checked = !enabled;
+                    logMessage('error', `切换自动清理失败: ${result.message}`);
+                    alert(`切换自动清理失败: ${result.message}`);
+                }
+            } catch (error) {
+                // 恢复开关状态
+                switchElement.checked = !enabled;
+                logMessage('error', `切换自动清理出错: ${error.message}`);
+                alert(`切换自动清理出错: ${error.message}`);
+            }
+        }
+
+        // 手动清理
+        async function manualCleanup() {
+            const confirm = window.confirm(
+                '⚠️ 确认手动清理所有模型？\n\n' +
+                '这将清理：\n' +
+                '• 推理模型（如已加载）\n' +
+                '• 训练模型（如存在）\n' +
+                '• GPU缓存\n\n' +
+                '清理后需要重新加载模型才能使用。'
+            );
+
+            if (!confirm) return;
+
+            try {
+                logMessage('info', '开始手动清理所有模型...');
+                const result = await callAPI('manual_cleanup', 'POST');
+
+                if (result.status === 'success') {
+                    logMessage('success', `手动清理完成: ${result.details.join(', ')}`);
+                    alert(`✅ 手动清理完成！\n\n清理内容：\n${result.details.join('\n')}`);
+
+                    // 更新状态显示
+                    document.getElementById('inference-model-status').textContent = '● 模型未加载';
+                    document.getElementById('inference-model-status').className = 'status-indicator status-offline';
+
+                    // 刷新内存信息
+                    setTimeout(refreshMemoryInfo, 1000);
+                } else {
+                    logMessage('error', `手动清理失败: ${result.message}`);
+                    alert(`❌ 手动清理失败: ${result.message}`);
+                }
+            } catch (error) {
+                logMessage('error', `手动清理出错: ${error.message}`);
+                alert(`❌ 手动清理出错: ${error.message}`);
+            }
+        }
+
+        // 显示内存优化建议
+        function showMemoryTips() {
+            const tips = `
+💡 PEPPER系统内存优化建议
+
+🎯 训练期间：
+• 启用自动清理功能（推荐）
+• 使用4bit量化减少内存占用
+• 适当降低batch_size
+• 关闭不必要的浏览器标签页
+
+🔧 推理期间：
+• 仅加载推理模型
+• 定期手动清理GPU缓存
+• 监控内存使用情况
+
+⚠️ 内存不足时：
+• 立即执行手动清理
+• 重启系统释放所有内存
+• 考虑升级硬件配置
+
+🚀 性能优化：
+• 使用GPU进行训练和推理
+• 合理配置量化参数
+• 避免同时运行多个模型
+            `;
+
+            alert(tips);
+            logMessage('info', '已显示内存优化建议');
+        }
+
+        // ======================== 训练监控功能 ========================
+
+        // 检查训练状态
+        async function checkTrainingStatus() {
+            try {
+                const result = await callAPI('training_progress');
+
+                if (result.status === 'success') {
+                    updateTrainingDisplay(result);
+                    logMessage('info', `训练状态检查完成: ${result.progress}%`);
+                } else {
+                    logMessage('error', `检查训练状态失败: ${result.message}`);
+                }
+            } catch (error) {
+                logMessage('error', `检查训练状态出错: ${error.message}`);
+            }
+        }
+
+        // 更新训练显示
+        function updateTrainingDisplay(progressData) {
+            const progress = progressData.progress;
+            const active = progressData.active;
+
+            // 更新进度条
+            document.getElementById('training-progress').style.width = `${progress}%`;
+            document.getElementById('progress-text').textContent = `${progress}%`;
+
+            // 更新状态指示器
+            const statusIndicator = document.getElementById('training-status-indicator');
+            if (active) {
+                statusIndicator.textContent = '● 训练进行中';
+                statusIndicator.className = 'status-indicator status-online';
+            } else if (progress >= 100) {
+                statusIndicator.textContent = '● 训练已完成';
+                statusIndicator.className = 'status-indicator status-online';
+            } else {
+                statusIndicator.textContent = '● 未开始训练';
+                statusIndicator.className = 'status-indicator status-offline';
+            }
+
+            // 更新详细信息
+            const infoDiv = document.getElementById('training-info');
+            if (active || progress > 0) {
+                infoDiv.style.display = 'block';
+
+                if (progressData.config) {
+                    document.getElementById('training-model-path').textContent =
+                        progressData.config.model_path || '-';
+                    document.getElementById('training-quantization').textContent =
+                        progressData.config.quantization || '-';
+                }
+
+                if (progressData.estimated_remaining_seconds) {
+                    const remainingMinutes = Math.ceil(progressData.estimated_remaining_seconds / 60);
+                    document.getElementById('training-remaining').textContent = `${remainingMinutes}分钟`;
+                } else {
+                    document.getElementById('training-remaining').textContent = '-';
+                }
+
+                document.getElementById('training-auto-cleanup').textContent =
+                    progressData.auto_cleanup_enabled ? '已启用' : '已禁用';
+            } else {
+                infoDiv.style.display = 'none';
+            }
+
+            // 更新时间信息
+            if (progressData.start_time) {
+                const startTime = new Date(progressData.start_time).toLocaleTimeString();
+                document.getElementById('progress-time').textContent = `开始: ${startTime}`;
+            }
+
+            // 更新内存监控（如果有）
+            if (progressData.memory_info) {
+                const memInfo = progressData.memory_info;
+                const gpuUsage = memInfo.gpu_cached_gb / memInfo.gpu_total_gb * 100;
+                document.getElementById('training-gpu-usage').textContent = `${gpuUsage.toFixed(1)}%`;
+            }
+
+            // 如果训练完成，显示完成信息
+            if (progress >= 100 && !active) {
+                setTimeout(() => {
+                    if (progressData.auto_cleanup_enabled) {
+                        logMessage('success', '训练完成，模型已自动清理');
+                        alert('🎉 训练完成！\n\n✅ 训练模型已自动清理，内存已释放\n💡 现在可以加载推理模型进行测试');
+                    } else {
+                        logMessage('success', '训练完成');
+                        alert('🎉 训练完成！\n\n⚠️ 自动清理已禁用，建议手动清理训练模型');
+                    }
+                    refreshMemoryInfo();
+                }, 1000);
+            }
+        }
+
+        // 开始训练监控
+        function startTrainingMonitoring() {
+            if (trainingMonitorInterval) {
+                clearInterval(trainingMonitorInterval);
+            }
+
+            trainingMonitorInterval = setInterval(() => {
+                checkTrainingStatus();
+            }, 3000); // 每3秒检查一次
+
+            logMessage('info', '训练监控已启动');
+        }
+
+        // 停止训练监控
+        function stopTrainingMonitoring() {
+            if (trainingMonitorInterval) {
+                clearInterval(trainingMonitorInterval);
+                trainingMonitorInterval = null;
+                logMessage('info', '训练监控已停止');
+            }
+        }
+
+        // ======================== 推理模型功能 ========================
+
+        // 加载推理模型
+        async function loadInferenceModel() {
+            const modelPath = prompt('请输入模型路径:', 'models/deepseek-coder-1.3b-base');
+
+            if (!modelPath) return;
+
+            try {
+                logMessage('info', `正在加载推理模型: ${modelPath}`);
+
+                const loadBtn = document.getElementById('load-inference-btn');
+                loadBtn.textContent = '📥 加载中...';
+                loadBtn.disabled = true;
+
+                const result = await callAPI('load_model', 'POST', {
+                    model_path: modelPath,
+                    use_4bit: true,
+                    use_8bit: false
+                });
+
+                if (result.status === 'success') {
+                    const quantization = result.quantization || 'unknown';
+                    document.getElementById('inference-model-status').textContent = `● 模型已加载 (${quantization})`;
+                    document.getElementById('inference-model-status').className = 'status-indicator status-online';
+
+                    loadBtn.textContent = `✅ 已加载 (${quantization})`;
+                    loadBtn.style.background = 'linear-gradient(135deg, #2ed573, #17d0aa)';
+
+                    logMessage('success', `推理模型加载成功: ${quantization}量化`);
+                    refreshMemoryInfo();
+                } else {
+                    logMessage('error', `推理模型加载失败: ${result.message}`);
+                    alert(`推理模型加载失败: ${result.message}`);
+                }
+            } catch (error) {
+                logMessage('error', `推理模型加载出错: ${error.message}`);
+                alert(`推理模型加载出错: ${error.message}`);
+            } finally {
+                const loadBtn = document.getElementById('load-inference-btn');
+                loadBtn.disabled = false;
+                if (loadBtn.textContent === '📥 加载中...') {
+                    loadBtn.textContent = '📥 加载推理模型';
+                    loadBtn.style.background = '';
+                }
+            }
+        }
+
+        // 卸载推理模型
+        async function unloadInferenceModel() {
+            try {
+                logMessage('info', '正在卸载推理模型...');
+
+                const result = await callAPI('unload_model', 'POST');
+
+                if (result.status === 'success') {
+                    document.getElementById('inference-model-status').textContent = '● 模型未加载';
+                    document.getElementById('inference-model-status').className = 'status-indicator status-offline';
+
+                    const loadBtn = document.getElementById('load-inference-btn');
+                    loadBtn.textContent = '📥 加载推理模型';
+                    loadBtn.style.background = '';
+
+                    logMessage('success', '推理模型已卸载');
+                    refreshMemoryInfo();
+                } else {
+                    logMessage('error', `推理模型卸载失败: ${result.message}`);
+                    alert(`推理模型卸载失败: ${result.message}`);
+                }
+            } catch (error) {
+                logMessage('error', `推理模型卸载出错: ${error.message}`);
+                alert(`推理模型卸载出错: ${error.message}`);
+            }
+        }
+
+        // 测试模型
+        async function testModel() {
+            const question = document.getElementById('test-question').value.trim();
+
+            if (!question) {
+                alert('请输入测试问题');
+                return;
+            }
+
+            try {
+                logMessage('info', '正在测试模型...');
+
+                document.getElementById('model-response').textContent = '🤔 思考中...';
+
+                const result = await callAPI('test_model', 'POST', {
+                    question: question,
+                    temperature: 0.7,
+                    max_tokens: 512
+                });
+
+                if (result.status === 'success') {
+                    document.getElementById('model-response').textContent = result.response;
+                    logMessage('success', '模型测试完成');
+                } else {
+                    document.getElementById('model-response').textContent = `❌ 测试失败: ${result.message}`;
+                    logMessage('error', `模型测试失败: ${result.message}`);
+                }
+            } catch (error) {
+                document.getElementById('model-response').textContent = `❌ 测试出错: ${error.message}`;
+                logMessage('error', `模型测试出错: ${error.message}`);
+            }
+        }
+
+        // ======================== 初始化 ========================
+
+        // 页面加载完成初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            logMessage('info', 'PEPPER智能教学系统内存管理版本加载完成');
+
+            // 初始化内存监控
+            refreshMemoryInfo();
+            startMemoryMonitoring();
+
+            // 检查训练状态
+            checkTrainingStatus();
+
+            // 每30秒检查一次训练状态
+            setInterval(checkTrainingStatus, 30000);
+
+            logMessage('info', '系统初始化完成，内存监控已启动');
+        });
+
+        // 页面卸载时清理
+        window.addEventListener('beforeunload', function() {
+            stopMemoryMonitoring();
+            stopTrainingMonitoring();
+        });
+    </script>
+</body>
+</html>

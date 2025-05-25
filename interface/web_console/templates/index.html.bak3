@@ -411,7 +411,7 @@
             <div class="grid-2">
                 <div class="panel">
                     <h2>📁 模型选择与管理</h2>
-
+                    
                     <!-- 模型发现和选择 -->
                     <div class="form-group">
                         <label>选择基础模型</label>
@@ -443,7 +443,7 @@
 
                         <!-- 手动输入模式 -->
                         <div id="manual-model-section" style="display: none;">
-                            <input type="text" id="model-path"
+                            <input type="text" id="model-path" 
                                    value="models/deepseek-coder-1.3b-base"
                                    placeholder="输入模型路径，例如：models/deepseek-coder-1.3b-base">
                         </div>
@@ -466,7 +466,7 @@
                     </div>
 
                     <h2>⚙️ 量化训练配置</h2>
-
+                    
                     <!-- 量化配置部分 -->
                     <div class="form-group">
                         <label>量化设置</label>
@@ -510,7 +510,7 @@
 
                 <div class="panel">
                     <h2>🎯 LoRA训练参数</h2>
-
+                    
                     <div class="form-group">
                         <label>训练数据文件</label>
                         <div class="file-upload" onclick="document.getElementById('training-data').click()">
@@ -547,8 +547,6 @@
 
                     <div class="form-group">
                         <button onclick="startFineTuning()" id="start-training-btn">🚀 开始LoRA微调</button>
-                        <!-- 在训练按钮附近添加 -->
-                        <button onclick="manualCleanup()" class="btn-secondary">🗑️ 手动清理内存</button>
                     </div>
 
                     <div class="form-group">
@@ -579,7 +577,7 @@
             <div class="grid-2">
                 <div class="panel">
                     <h2>🤖 模型加载管理</h2>
-
+                    
                     <div class="form-group">
                         <label>模型状态</label>
                         <div class="status-indicator status-offline" id="model-status">
@@ -600,7 +598,7 @@
                     </div>
 
                     <h2>🗄️ Neo4j知识图谱</h2>
-
+                    
                     <div class="form-group">
                         <label>数据库连接状态</label>
                         <div class="status-indicator status-offline" id="neo4j-status">
@@ -646,13 +644,13 @@
 
                 <div class="panel">
                     <h2>💬 智能对话</h2>
-
+                    
                     <div class="chat-container" id="chat-messages">
                         <div class="chat-message chat-assistant">
                             <strong>🤖 PEPPER:</strong> 你好！我是基于DeepSeek和Neo4j知识图谱的AI教学助手。请先加载模型和连接知识图谱，然后就可以开始对话了！
                         </div>
                     </div>
-
+                    
                     <div class="form-group" style="display: flex; gap: 10px; margin-top: 20px;">
                         <textarea id="chat-input" rows="3" placeholder="输入你的问题..." style="flex: 1; resize: vertical;"></textarea>
                         <button onclick="sendMessage()" style="width: 100px; height: fit-content;">💬 发送</button>
@@ -945,7 +943,7 @@
         // 开始LoRA微调
         async function startFineTuning() {
             logMessage('info', '开始LoRA微调函数被调用');
-
+            
             // 先检查元素是否存在
             const fileInput = document.getElementById('training-data');
             if (!fileInput) {
@@ -1034,7 +1032,7 @@
             try {
                 logMessage('info', '正在发送API请求...');
                 const result = await callAPI('start_finetuning', 'POST', formData);
-
+                
                 logMessage('info', `API响应: ${JSON.stringify(result)}`);
 
                 if (result.status === 'success') {
@@ -1045,10 +1043,10 @@
                     const detailsDiv = document.getElementById('training-details');
                     if (detailsDiv) {
                         detailsDiv.style.display = 'block';
-
+                        
                         const quantizationSpan = document.getElementById('training-quantization');
                         const batchSizeSpan = document.getElementById('training-batch-size');
-
+                        
                         if (quantizationSpan) quantizationSpan.textContent = (result.config && result.config.quantization) || quantization;
                         if (batchSizeSpan) batchSizeSpan.textContent = (result.config && result.config.batch_size) || batchSize;
                     }
@@ -1072,26 +1070,6 @@
                         startBtn.textContent = '🚀 开始LoRA微调';
                     }
                 }, 2000);
-            }
-        }
-
-        // 手动清理内存
-        async function manualCleanup() {
-            try {
-                logMessage('info', '开始手动清理所有模型内存...');
-
-                const result = await callAPI('manual_cleanup', 'POST');
-
-                if (result.status === 'success') {
-                    logMessage('success', `${result.details.join(', ')}`);
-                    alert(`内存清理完成！\n${result.details.join('\n')}`);
-                } else {
-                    logMessage('error', `手动清理失败: ${result.message}`);
-                    alert(`清理失败: ${result.message}`);
-                }
-            } catch (error) {
-                logMessage('error', `清理出错: ${error.message}`);
-                alert(`清理出错: ${error.message}`);
             }
         }
 
@@ -1120,10 +1098,6 @@
                         setTimeout(updateTrainingProgress, 2000);
                     } else if (progress >= 100) {
                         logMessage('info', `${currentTrainingConfig?.quantization || ''}量化LoRA微调完成`);
-                        logMessage('info', '正在自动清理训练模型内存...');
-                        setTimeout(() => {
-                            logMessage('success', '训练模型内存已自动释放');
-                        }, 4000);
                         setTimeout(() => {
                             document.getElementById('training-details').style.display = 'none';
                         }, 5000);
@@ -1144,7 +1118,7 @@
         // 加载聊天模型
         async function loadChatModel() {
             const modelPath = document.getElementById('chat-model-selector').value;
-
+            
             if (!modelPath) {
                 alert('请选择要加载的模型');
                 return;
@@ -1364,7 +1338,7 @@
             ];
 
             const randomQuestion = testQuestions[Math.floor(Math.random() * testQuestions.length)];
-
+            
             document.getElementById('chat-input').value = randomQuestion;
             sendMessage();
         }
@@ -1465,7 +1439,7 @@
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
             logMessage('info', 'PEPPER智能教学系统界面加载完成');
-
+            
             // 检查关键元素是否存在
             const criticalElements = {
                 'training-data': '训练数据文件输入',
@@ -1476,25 +1450,25 @@
                 'learning-rate': '学习率输入',
                 'start-training-btn': '开始训练按钮'
             };
-
+            
             let missingElements = [];
             Object.entries(criticalElements).forEach(([id, description]) => {
                 if (!document.getElementById(id)) {
                     missingElements.push(`${description}(${id})`);
                 }
             });
-
+            
             if (missingElements.length > 0) {
                 logMessage('error', `缺少关键元素: ${missingElements.join(', ')}`);
                 alert(`页面加载不完整，缺少元素: ${missingElements.join(', ')}\n请刷新页面重试`);
                 return;
             }
-
+            
             logMessage('info', '所有关键元素检查通过');
-
+            
             // 设置事件监听器
             // setupEventListeners();
-
+            
             // 自动扫描模型
             setTimeout(() => {
                 logMessage('info', '开始自动扫描模型');
@@ -1509,7 +1483,7 @@
 
             // 更新预计训练时间
             updateEstimatedTime();
-
+            
             logMessage('info', '系统初始化完成');
         });
     </script>
