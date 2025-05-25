@@ -324,7 +324,8 @@ def start_finetuning():
             try:
                 logger.info(f"开始{system_status['training_config']['quantization']}量化训练")
 
-                # 加载基础模型
+                # 加载基础模型(0-10%)
+                system_status['training_progress'] = 5
                 success = services['fine_tuner'].load_base_model(use_4bit=use_4bit, use_8bit=use_8bit)
                 if not success:
                     system_status['training_active'] = False
@@ -332,12 +333,12 @@ def start_finetuning():
                     logger.error("训练模型加载失败")
                     return
 
-                system_status['training_progress'] = 5
+                system_status['training_progress'] = 10
                 logger.info("训练模型加载成功，准备LoRA配置")
 
-                # 准备LoRA配置
+                # 准备LoRA配置 (10-15%)
                 services['fine_tuner'].prepare_lora_config()
-                system_status['training_progress'] = 10
+                system_status['training_progress'] = 12
 
                 logger.info("准备数据集")
                 # 准备数据集
@@ -351,12 +352,21 @@ def start_finetuning():
                 system_status['training_progress'] = 15
                 logger.info("开始LoRA微调训练")
 
+                # 定义进度回调函数 - 这个函数会被训练器调用
+                def training_progress_callback(progress):
+                    # progress 是 0-100 的真实训练进度
+                    # 映射到 15-99 的区间
+                    mapped_progress = 15 + (progress * 0.84)  # 84% = 99-15
+                    system_status['training_progress'] = int(min(99, mapped_progress))
+                    logger.info(f"训练进度: {system_status['training_progress']}%")
+
                 # 开始训练
                 success = services['fine_tuner'].train(
                     dataset,
                     epochs=epochs,
                     batch_size=batch_size,
-                    learning_rate=learning_rate
+                    learning_rate=learning_rate,
+                    progress_callback=training_progress_callback
                 )
 
                 if success:
@@ -927,6 +937,7 @@ def check_quantization_support():
             "peft_available": False,
             "torch_version": "",
             "cuda_available": False,
+            "gpu_name": "",  # 新增：GPU名称
             "recommendations": []
         }
 
@@ -957,8 +968,15 @@ def check_quantization_support():
             import torch
             support_info["torch_version"] = torch.__version__
             support_info["cuda_available"] = torch.cuda.is_available()
+
             if torch.cuda.is_available():
                 support_info["cuda_version"] = torch.version.cuda
+                # 获取GPU名称
+                support_info["gpu_name"] = torch.cuda.get_device_name(0)
+                logger.info(f"检测到GPU: {support_info['gpu_name']}")
+            else:
+                support_info["gpu_name"] = "无GPU"
+
         except ImportError:
             support_info["recommendations"].append("需要安装PyTorch")
 

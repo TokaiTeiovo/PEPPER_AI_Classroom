@@ -292,10 +292,20 @@ class LoRAFineTuner:
             logger.error(f"数据集准备失败: {e}")
             return None
 
-    def train(self, dataset, epochs=3, batch_size=4, learning_rate=2e-4):
+    def train(self, dataset, epochs=3, batch_size=4, learning_rate=2e-4, progress_callback=None):
         """训练模型"""
         try:
             logger.info("开始训练过程")
+
+            # 检查是否收到了进度回调
+            if progress_callback:
+                logger.info("已接收到进度回调函数")
+            else:
+                logger.warning("未接收到进度回调函数")
+
+            if not self.peft_model:
+                logger.error("PEFT模型未初始化")
+                return False
 
             if not self.peft_model:
                 logger.error("PEFT模型未初始化")
@@ -324,16 +334,16 @@ class LoRAFineTuner:
                 learning_rate=learning_rate,
                 weight_decay=0.01,
                 warmup_steps=100,
-                logging_steps=10,
-                save_steps=500,  # 增加保存间隔，减少IO
-                save_total_limit=2,  # 减少保存的检查点数量
-                fp16=(self.device == "cuda"),  # 如果使用GPU则启用fp16
-                bf16=False,  # 对于量化训练，通常不使用bf16
-                report_to="none",  # 禁用报告
-                remove_unused_columns=False,  # 保留所有列
-                dataloader_pin_memory=False,  # 量化训练时关闭pin_memory
-                gradient_checkpointing=True,  # 启用梯度检查点节省内存
-                optim="adamw_torch",  # 使用标准AdamW优化器
+                logging_steps=1,
+                save_steps=500,
+                save_total_limit=2,
+                fp16=(self.device == "cuda"),
+                bf16=False,
+                report_to="none",
+                remove_unused_columns=False,
+                dataloader_pin_memory=False,
+                gradient_checkpointing=True,
+                optim="adamw_torch",
             )
 
             # 创建数据收集器
@@ -341,6 +351,42 @@ class LoRAFineTuner:
                 tokenizer=self.tokenizer,
                 mlm=False  # 不使用掩码语言模型训练
             )
+
+            # 自定义进度回调类
+            from transformers import TrainerCallback
+
+            class ProgressCallback(TrainerCallback):
+                def __init__(self, callback_func):
+                    self.callback_func = callback_func
+                    self.last_reported_progress = 0
+                    logger.info("ProgressCallback 初始化完成")
+
+                def on_train_begin(self, args, state, control, **kwargs):
+                    logger.info(f"训练开始 - 总步数: {state.max_steps}")
+                    if self.callback_func:
+                        self.callback_func(0)  # 开始时设置为0%
+
+                def on_step_end(self, args, state, control, **kwargs):
+                    if self.callback_func and state.max_steps > 0:
+                        # 计算真实进度百分比
+                        progress_percent = (state.global_step / state.max_steps) * 100
+
+                        # 只有进度变化超过1%才报告，避免过于频繁
+                        if progress_percent - self.last_reported_progress >= 1.0 or state.global_step == state.max_steps:
+                            logger.info(
+                                f"训练步骤: {state.global_step}/{state.max_steps}, 进度: {progress_percent:.1f}%")
+                            self.callback_func(progress_percent)
+                            self.last_reported_progress = progress_percent
+
+                def on_epoch_end(self, args, state, control, **kwargs):
+                    if self.callback_func and state.max_steps > 0:
+                        progress_percent = (state.global_step / state.max_steps) * 100
+                        self.callback_func(progress_percent)
+
+                def on_train_end(self, args, state, control, **kwargs):
+                    logger.info("训练结束")
+                    if self.callback_func:
+                        self.callback_func(100)  # 训练结束时设置为100%
 
             # 创建训练器
             trainer = Trainer(
@@ -350,6 +396,14 @@ class LoRAFineTuner:
                 data_collator=data_collator,
                 tokenizer=self.tokenizer
             )
+
+            # 如果有进度回调，添加回调
+            if progress_callback:
+                logger.info("添加进度回调到训练器")
+                progress_cb = ProgressCallback(progress_callback)
+                trainer.add_callback(progress_cb)
+            else:
+                logger.warning("没有进度回调函数，将无法更新训练进度")
 
             # 开始训练
             logger.info("开始LoRA微调训练")

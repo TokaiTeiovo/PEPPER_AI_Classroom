@@ -518,6 +518,24 @@
                             <p>点击上传训练数据</p>
                             <small>支持JSON/CSV格式</small>
                         </div>
+                        <!-- 文件信息显示区域 -->
+                        <div id="file-info" style="display: none; margin-top: 15px; padding: 15px; background: rgba(46, 213, 115, 0.1); border: 1px solid #2ed573; border-radius: 8px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span style="color: #2ed573; font-size: 16px;">✅</span>
+                                <div>
+                                    <div id="file-name" style="font-weight: 600; color: #2f3542;"></div>
+                                    <div id="file-details" style="font-size: 13px; color: #666; margin-top: 4px;"></div>
+                                </div>
+                                <!-- 删除按钮 -->
+                                <button id="remove-file-btn" type="button" onclick="removeUploadedFile(event)"
+                                        style="background: linear-gradient(135deg, #ff4757, #ff6b7a); color: white; border: none; border-radius: 8px; padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; transition: all 0.3s ease; margin-left: 15px; box-shadow: 0 2px 8px rgba(255, 71, 87, 0.3);"
+                                        onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(255, 71, 87, 0.4)'"
+                                        onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(255, 71, 87, 0.3)'"
+                                        title="删除文件">
+                                    🗑️ 删除
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="form-row">
@@ -682,6 +700,7 @@
         let discoveredModels = [];
         let selectedModelInfo = null;
         let currentTrainingConfig = null;
+        let trainingState = 'idle';
 
         // 标签页切换
         function showTab(tabName) {
@@ -927,14 +946,17 @@
             const infoDiv = document.getElementById('quantization-info');
 
             if (info.quantization_ready) {
+                const gpuInfo = info.cuda_available ? info.gpu_name || '可用' : '不可用';
                 infoDiv.innerHTML = `
                     <div style="color: #2ed573;">✅ 量化训练支持完整</div>
-                    <div>GPU: ${info.cuda_available ? '可用' : '不可用'} | PyTorch: ${info.torch_version}</div>
+                    <div>GPU: ${gpuInfo} | PyTorch: ${info.torch_version}</div>
                 `;
             } else {
                 const recommendations = info.recommendations.join('<br>');
+                const gpuInfo = info.cuda_available ? info.gpu_name || '可用' : '不可用';
                 infoDiv.innerHTML = `
                     <div style="color: #ff9f43;">⚠️ 量化训练支持不完整</div>
+                    <div>GPU: ${gpuInfo} | PyTorch: ${info.torch_version}</div>
                     <div style="margin-top: 5px;">${recommendations}</div>
                 `;
             }
@@ -946,6 +968,12 @@
         async function startFineTuning() {
             logMessage('info', '开始LoRA微调函数被调用');
 
+            // 检查是否已经在训练中
+            if (trainingState === 'starting' || trainingState === 'active') {
+                logMessage('warning', '训练已在进行中，请等待完成');
+                return;
+            }
+
             // 先检查元素是否存在
             const fileInput = document.getElementById('training-data');
             if (!fileInput) {
@@ -954,11 +982,18 @@
                 return;
             }
 
+            // 检查是否已选择文件
+            if (!fileInput.files || fileInput.files.length === 0) {
+                showTemporaryMessage('请先上传训练数据文件', 'warning');
+                alert('请先上传训练数据文件');
+                return;
+            }
+
+
             // 获取模型路径
             let modelPath;
             const selectedMode = document.querySelector('input[name="model-mode"]:checked');
             if (!selectedMode) {
-                alert('请选择模型模式');
                 logMessage('error', '没有选择模型模式');
                 return;
             }
@@ -1022,11 +1057,15 @@
             formData.append('use_4bit', quantization === '4bit' ? 'true' : 'false');
             formData.append('use_8bit', quantization === '8bit' ? 'true' : 'false');
 
-            // 禁用开始按钮
+            // 设置训练状态为启动中
+            trainingState = 'starting';
+
+            // 更新按钮状态为启动中
             const startBtn = document.getElementById('start-training-btn');
             if (startBtn) {
                 startBtn.disabled = true;
                 startBtn.textContent = '🚀 正在启动训练...';
+                startBtn.style.background = '#ff9f43'; // 橙色表示启动中
             }
 
             logMessage('info', `开始${quantization}量化LoRA微调，模型路径: ${modelPath}`);
@@ -1040,6 +1079,15 @@
                 if (result.status === 'success') {
                     currentTrainingConfig = result.config || {};
                     logMessage('info', `${quantization}量化微调已开始，模型将保存到: ${result.output_dir || '未知路径'}`);
+
+                    // 训练成功启动后，设置状态为活跃并更新按钮
+                    trainingState = 'active';
+
+                    // 训练成功启动后，更新按钮状态为训练中
+                    if (startBtn) {
+                        startBtn.textContent = '🔄 模型加载中...';
+                        startBtn.style.background = '#ff9f43'; // 保持橙色
+                    }
 
                     // 显示训练详细信息
                     const detailsDiv = document.getElementById('training-details');
@@ -1058,20 +1106,36 @@
                     updateTrainingProgress();
                 } else {
                     logMessage('error', `微调启动失败: ${result.message || '未知错误'}`);
-                    alert('微调启动失败: ' + (result.message || JSON.stringify(result)));
+
+                    // 启动失败时重置状态和按钮
+                    trainingState = 'failed';
+
+                    // 启动失败时恢复按钮
+                    if (startBtn) {
+                        startBtn.disabled = false;
+                        startBtn.textContent = '🚀 开始LoRA微调';
+                        startBtn.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                    }
+                    // 3秒后重置状态
+                    setTimeout(() => {
+                        rainingState = 'idle';
+                    }, 3000);
                 }
             } catch (error) {
                 logMessage('error', `微调启动出错: ${error.message}`);
                 console.error('微调启动详细错误:', error);
-                alert('微调启动出错: ' + error.message + '\n请检查控制台和系统日志了解详情');
-            } finally {
-                // 延迟恢复按钮状态，避免用户重复点击
+
+                // 出错时重置状态和按钮
+                trainingState = 'failed';
+                if (startBtn) {
+                    startBtn.disabled = false;
+                    startBtn.textContent = '🚀 开始LoRA微调';
+                    startBtn.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                }
+                // 3秒后重置状态
                 setTimeout(() => {
-                    if (startBtn) {
-                        startBtn.disabled = false;
-                        startBtn.textContent = '🚀 开始LoRA微调';
-                    }
-                }, 2000);
+                    trainingState = 'idle';
+                }, 3000);
             }
         }
 
@@ -1099,6 +1163,7 @@
         async function updateTrainingProgress() {
             try {
                 const result = await callAPI('training_progress');
+                const startBtn = document.getElementById('start-training-btn');
 
                 if (result.status === 'success') {
                     const progress = result.progress;
@@ -1106,36 +1171,120 @@
                     document.getElementById('training-progress').style.width = `${progress}%`;
                     document.getElementById('progress-text').textContent = `${progress}%`;
 
+                    // 修复：先检查是否完成，再检查是否活跃
+                    if (startBtn && (trainingState === 'starting' || trainingState === 'active')) {
+
+                        if (progress >= 100) {
+                            // 训练完成 - 优先检查这个条件
+                            trainingState = 'completed';
+                            startBtn.textContent = '✅ 训练完成';
+                            startBtn.style.background = 'linear-gradient(135deg, #2ed573, #17d0aa)';
+                            startBtn.disabled = false;
+
+                            logMessage('info', `${currentTrainingConfig?.quantization || ''}量化LoRA微调完成`);
+                            logMessage('info', '正在自动清理训练模型内存...');
+
+                            // 5秒后恢复初始状态
+                            setTimeout(() => {
+                                if (startBtn && trainingState === 'completed') {
+                                    startBtn.textContent = '🚀 开始LoRA微调';
+                                    startBtn.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                                    trainingState = 'idle';
+                                }
+                            }, 5000);
+
+                            // 延迟隐藏训练详情
+                            setTimeout(() => {
+                                const detailsDiv = document.getElementById('training-details');
+                                if (detailsDiv) detailsDiv.style.display = 'none';
+                            }, 8000);
+
+                            // 刷新模型列表
+                            setTimeout(discoverModels, 1000);
+
+                        } else if (result.error) {
+                            // 训练出错
+                            trainingState = 'failed';
+                            startBtn.textContent = '❌ 训练失败';
+                            startBtn.style.background = 'linear-gradient(135deg, #ff4757, #ff6b7a)';
+                            startBtn.disabled = false;
+
+                            logMessage('error', `训练失败: ${result.error}`);
+                            alert('训练失败: ' + result.error);
+
+                            const detailsDiv = document.getElementById('training-details');
+                            if (detailsDiv) detailsDiv.style.display = 'none';
+
+                            // 3秒后恢复初始状态
+                            setTimeout(() => {
+                                if (startBtn && trainingState === 'failed') {
+                                    startBtn.textContent = '🚀 开始LoRA微调';
+                                    startBtn.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                                    trainingState = 'idle';
+                                }
+                            }, 3000);
+
+                        } else if (result.active) {
+                            // 训练仍在进行中
+                            trainingState = 'active';
+
+                            if (progress < 15) {
+                                // 0-15%: 模型加载和准备阶段
+                                startBtn.textContent = '🔄 模型加载中...';
+                                startBtn.style.background = '#ff9f43';
+                            } else {
+                                // 15-99%: 真实的训练进度
+                                startBtn.textContent = `⚡ 训练中 ${progress}%`;
+                                startBtn.style.background = 'linear-gradient(135deg, #ff6b7a, #ff4757)';
+                            }
+                            startBtn.disabled = true;
+
+                        } else {
+                            // result.active 为 false 但 progress < 100，可能是训练刚结束但状态还没更新
+                            // 保持当前状态，等待下次更新
+                            logMessage('info', `训练状态不明确: progress=${progress}, active=${result.active}`);
+                        }
+                    }
+
+                    // 更新剩余时间
                     if (result.estimated_remaining_seconds) {
                         const remainingMinutes = Math.ceil(result.estimated_remaining_seconds / 60);
-                        document.getElementById('training-remaining').textContent = `${remainingMinutes}分钟`;
+                        const remainingElement = document.getElementById('training-remaining');
+                        if (remainingElement) {
+                            remainingElement.textContent = `${remainingMinutes}分钟`;
+                        }
                     }
 
+                    // 更新开始时间
                     if (result.start_time) {
                         const startTime = new Date(result.start_time).toLocaleTimeString();
-                        document.getElementById('progress-time').textContent = `开始时间: ${startTime}`;
+                        const timeElement = document.getElementById('progress-time');
+                        if (timeElement) {
+                            timeElement.textContent = `开始时间: ${startTime}`;
+                        }
                     }
 
-                    if (progress < 100 && result.active) {
+                    // 继续监控训练进度 - 只有在未完成且无错误时才继续
+                    if (progress < 100 && !result.error && trainingState === 'active') {
                         setTimeout(updateTrainingProgress, 2000);
-                    } else if (progress >= 100) {
-                        logMessage('info', `${currentTrainingConfig?.quantization || ''}量化LoRA微调完成`);
-                        logMessage('info', '正在自动清理训练模型内存...');
-                        setTimeout(() => {
-                            logMessage('success', '训练模型内存已自动释放');
-                        }, 4000);
-                        setTimeout(() => {
-                            document.getElementById('training-details').style.display = 'none';
-                        }, 5000);
-                        setTimeout(discoverModels, 1000); // 刷新模型列表
-                    } else if (result.error) {
-                        logMessage('error', `训练失败: ${result.error}`);
-                        alert('训练失败: ' + result.error);
-                        document.getElementById('training-details').style.display = 'none';
                     }
                 }
             } catch (error) {
                 logMessage('error', `获取训练进度失败: ${error.message}`);
+
+                // 网络错误时，如果正在训练中，显示网络异常但不改变训练状态
+                const startBtn = document.getElementById('start-training-btn');
+                if (startBtn && trainingState === 'active') {
+                    startBtn.textContent = '🔗 网络异常，重试中...';
+                    startBtn.style.background = '#ff9f43';
+
+                    // 3秒后重试
+                    setTimeout(() => {
+                        if (trainingState === 'active') {
+                            updateTrainingProgress();
+                        }
+                    }, 3000);
+                }
             }
         }
 
@@ -1462,6 +1611,230 @@
             }
         } */
 
+        // 文件上传处理函数
+        function setupFileUpload() {
+            const fileInput = document.getElementById('training-data');
+
+            if (!fileInput) {
+                logMessage('error', '找不到文件输入元素');
+                return;
+            }
+
+            // 移除之前的事件监听器
+            const newFileInput = fileInput.cloneNode(true);
+            fileInput.parentNode.replaceChild(newFileInput, fileInput);
+
+            // 添加新的事件监听器
+            const currentFileInput = document.getElementById('training-data');
+            currentFileInput.addEventListener('change', handleFileChange);
+
+            logMessage('info', '文件上传功能已初始化');
+        }
+
+        function handleFileChange(e) {
+            const file = e.target.files[0];
+            const fileInfo = document.getElementById('file-info');
+            const fileUploadArea = document.getElementById('file-upload-area');
+
+            if (!file) {
+                // 如果没有选择文件，隐藏文件信息
+                if (fileInfo) fileInfo.style.display = 'none';
+                resetFileUploadArea();
+                return;
+            }
+
+            // 验证文件类型
+            const validTypes = ['.json', '.csv'];
+            const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+
+            if (!validTypes.includes(fileExtension)) {
+                showTemporaryMessage('请选择JSON或CSV格式的文件', 'error');
+                e.target.value = '';
+                if (fileInfo) fileInfo.style.display = 'none';
+                resetFileUploadArea();
+                setTimeout(setupFileUpload, 100);
+                return;
+            }
+
+            // 验证文件大小 (限制为16MB)
+            if (file.size > 16 * 1024 * 1024) {
+                showTemporaryMessage('文件大小不能超过16MB', 'error');
+                e.target.value = '';
+                if (fileInfo) fileInfo.style.display = 'none';
+                resetFileUploadArea();
+                setTimeout(setupFileUpload, 100);
+                return;
+            }
+
+            // 显示文件信息
+            displayFileInfo(file);
+            updateFileUploadArea();
+
+            logMessage('info', `已选择训练数据文件: ${file.name} (${formatFileSize(file.size)})`);
+            showTemporaryMessage(`文件上传成功: ${file.name}`, 'success');
+        }
+
+        function removeUploadedFile() {
+            // 阻止事件冒泡
+            if (event) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+
+            const fileInput = document.getElementById('training-data');
+            const fileInfo = document.getElementById('file-info');
+
+            if (fileInput && fileInput.files && fileInput.files.length > 0) {
+                // 获取文件名用于日志
+                const fileName = fileInput.files[0].name;
+
+                // 清空文件选择
+                const newFileInput = fileInput.cloneNode(true);
+                newFileInput.value = '';
+                fileInput.parentNode.replaceChild(newFileInput, fileInput);
+
+                // 隐藏文件信息
+                if (fileInfo) {
+                    fileInfo.style.display = 'none';
+                }
+
+                // 重置文件上传区域
+                resetFileUploadArea();
+
+                logMessage('info', `已删除上传的文件: ${fileName}`);
+
+                // 可选：显示删除成功的临时提示
+                showTemporaryMessage('文件已删除', 'success');
+
+                // 重新初始化文件上传功能
+                setTimeout(() => {
+                    setupFileUpload();
+                }, 100);
+            } else {
+                logMessage('warning', '没有找到要删除的文件');
+                showTemporaryMessage('没有文件可删除', 'warning');
+            }
+        }
+
+        // 显示临时提示消息
+        function showTemporaryMessage(message, type = 'info') {
+            const messageDiv = document.createElement('div');
+            messageDiv.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 12px 20px;
+                border-radius: 8px;
+                color: white;
+                font-weight: 600;
+                z-index: 1000;
+                transition: all 0.3s ease;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            `;
+
+            // 根据类型设置颜色
+            switch(type) {
+                case 'success':
+                    messageDiv.style.background = 'linear-gradient(135deg, #2ed573, #17d0aa)';
+                    break;
+                case 'error':
+                    messageDiv.style.background = 'linear-gradient(135deg, #ff4757, #ff6b7a)';
+                    break;
+                case 'warning':
+                    messageDiv.style.background = 'linear-gradient(135deg, #ff9f43, #ffa801)';
+                    break;
+                default:
+                    messageDiv.style.background = 'linear-gradient(135deg, #667eea, #764ba2)';
+            }
+
+            messageDiv.textContent = message;
+            document.body.appendChild(messageDiv);
+
+            // 3秒后自动消失
+            setTimeout(() => {
+                messageDiv.style.opacity = '0';
+                messageDiv.style.transform = 'translateX(100%)';
+                setTimeout(() => {
+                    if (document.body.contains(messageDiv)) {
+                        document.body.removeChild(messageDiv);
+                    }
+                }, 300);
+            }, 3000);
+        }
+
+        function displayFileInfo(file) {
+            const fileName = document.getElementById('file-name');
+            const fileDetails = document.getElementById('file-details');
+            const fileInfo = document.getElementById('file-info');
+
+            if (fileName && fileDetails && fileInfo) {
+                const fileSize = formatFileSize(file.size);
+                const fileType = file.name.split('.').pop().toUpperCase();
+                const uploadTime = new Date().toLocaleString();
+
+                fileName.textContent = file.name;
+                fileDetails.innerHTML = `
+                    <span>📊 类型: ${fileType}</span> •
+                    <span>📦 大小: ${fileSize}</span> •
+                    <span>⏰ 上传时间: ${uploadTime}</span>
+                `;
+
+                fileInfo.style.display = 'block';
+            }
+        }
+
+        function updateFileUploadArea() {
+            const fileUploadArea = document.getElementById('file-upload-area');
+            if (fileUploadArea) {
+                fileUploadArea.innerHTML = `
+                    <input type="file" id="training-data" accept=".json,.csv" style="display: none;">
+                    <p style="color: #2ed573; font-weight: 600;">✅ 文件已选择</p>
+                    <small style="color: #666;">点击可重新选择文件</small>
+                `;
+
+                fileUploadArea.style.borderColor = '#2ed573';
+                fileUploadArea.style.background = 'rgba(46, 213, 115, 0.05)';
+
+                // 重新绑定事件
+                fileUploadArea.onclick = function() {
+                    const input = document.getElementById('training-data');
+                    if (input) input.click();
+                };
+
+                // 重新设置文件上传
+                setTimeout(setupFileUpload, 100);
+            }
+        }
+
+        function resetFileUploadArea() {
+            const fileUploadArea = document.getElementById('file-upload-area');
+            if (fileUploadArea) {
+                fileUploadArea.innerHTML = `
+                    <input type="file" id="training-data" accept=".json,.csv" style="display: none;">
+                    <p>点击上传训练数据</p>
+                    <small>支持JSON/CSV格式</small>
+                `;
+
+                fileUploadArea.style.borderColor = '#e1e5e9';
+                fileUploadArea.style.background = 'rgba(255, 255, 255, 0.5)';
+
+                fileUploadArea.onclick = function() {
+                    const input = document.getElementById('training-data');
+                    if (input) input.click();
+                };
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
             logMessage('info', 'PEPPER智能教学系统界面加载完成');
@@ -1494,6 +1867,9 @@
 
             // 设置事件监听器
             // setupEventListeners();
+
+            // 初始化文件上传功能
+            setupFileUpload();
 
             // 自动扫描模型
             setTimeout(() => {
