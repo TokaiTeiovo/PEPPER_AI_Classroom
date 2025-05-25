@@ -104,7 +104,6 @@ def force_cleanup_model(model_service=None):
         logger.error(f"强制清理模型失败: {e}")
         return False
 
-
 def initialize_services():
     """初始化服务"""
     try:
@@ -121,93 +120,180 @@ def initialize_services():
     except Exception as e:
         logger.error(f"服务初始化失败: {e}")
 
-
 # ======================== 大语言模型API ========================
 
 @app.route('/api/load_model', methods=['POST'])
 def load_model():
-    """加载大语言模型"""
+    """加载大语言模型 - 简化修复版本"""
     try:
         data = request.json
-        # 修复：确保data不为空
         if not data:
-            return jsonify({
-                "status": "error",
-                "message": "请求数据为空"
-            })
+            return jsonify({"status": "error", "message": "请求数据为空"})
 
         model_path = data.get('model_path', '')
-        use_4bit = data.get('use_4bit', True)  # 默认使用4bit量化
+        use_4bit = data.get('use_4bit', True)
         use_8bit = data.get('use_8bit', False)
 
-        # 修复：检查model_path是否为空
         if not model_path or model_path.strip() == '':
-            return jsonify({
-                "status": "error",
-                "message": "模型路径不能为空"
-            })
+            return jsonify({"status": "error", "message": "模型路径不能为空"})
 
         logger.info(f"正在加载推理模型: {model_path}")
 
         if not os.path.exists(model_path):
-            return jsonify({
-                "status": "error",
-                "message": f"模型路径不存在: {model_path}"
-            })
+            return jsonify({"status": "error", "message": f"模型路径不存在: {model_path}"})
 
-        # 如果有训练中的模型，先清理
+        # 清理现有模型
+        if services['llm']:
+            logger.info("清理现有推理模型")
+            force_cleanup_model(services['llm'])
+            services['llm'] = None
+
         if services['fine_tuner']:
-            logger.info("清理训练模型，为推理模型让出内存")
+            logger.info("清理训练模型")
             force_cleanup_model(services['fine_tuner'])
             services['fine_tuner'] = None
 
+        # 检测是否是LoRA模型
+        adapter_files = ['adapter_config.json', 'adapter_model.bin', 'adapter_model.safetensors']
+        is_lora_model = any(os.path.exists(os.path.join(model_path, f)) for f in adapter_files)
+
         try:
-            # 检测是否是微调后的模型
-            if 'deepseek-' in model_path and any(
-                    x in model_path for x in ['_4bit', '_8bit', '20241', '20242', '20243']):
-                logger.info("检测到微调模型，使用LoRA加载")
-                temp_fine_tuner = LoRAFineTuner(model_path)
-                success = temp_fine_tuner.load_base_model(use_4bit=use_4bit, use_8bit=use_8bit)
-                if success:
-                    services['llm'] = temp_fine_tuner
+            if is_lora_model:
+                logger.info("检测到LoRA模型，使用LoRA加载方式")
+
+                # 确定基础模型路径
+                base_model_path = "models/deepseek-coder-1.3b-base"
+
+                # 尝试从training_info.json读取基础模型路径
+                training_info_path = os.path.join(model_path, 'training_info.json')
+                if os.path.exists(training_info_path):
+                    try:
+                        with open(training_info_path, 'r', encoding='utf-8') as f:
+                            training_info = json.load(f)
+                            saved_base_path = training_info.get('base_model')
+                            if saved_base_path and os.path.exists(saved_base_path):
+                                base_model_path = saved_base_path
+                                logger.info(f"使用保存的基础模型路径: {base_model_path}")
+                    except:
+                        pass
+
+                if not os.path.exists(base_model_path):
+                    return jsonify({
+                        "status": "error",
+                        "message": f"基础模型不存在: {base_model_path}"
+                    })
+
+                # 加载基础模型和分词器
+                from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+
+                logger.info("加载分词器...")
+                tokenizer = AutoTokenizer.from_pretrained(base_model_path, trust_remote_code=True)
+                if tokenizer.pad_token is None:
+                    tokenizer.pad_token = tokenizer.eos_token
+
+                # 配置量化
+                quantization_config = None
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+
+                if device == "cuda" and (use_4bit or use_8bit):
+                    if use_4bit:
+                        logger.info("使用4bit量化")
+                        quantization_config = BitsAndBytesConfig(
+                            load_in_4bit=True,
+                            bnb_4bit_quant_type="nf4",
+                            bnb_4bit_compute_dtype=torch.float16,
+                            bnb_4bit_use_double_quant=True,
+                        )
+                    elif use_8bit:
+                        logger.info("使用8bit量化")
+                        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+
+                # 加载基础模型
+                logger.info(f"加载基础模型: {base_model_path}")
+                load_kwargs = {"trust_remote_code": True, "torch_dtype": dtype}
+
+                if quantization_config:
+                    load_kwargs["quantization_config"] = quantization_config
+                    load_kwargs["device_map"] = "auto"
+                elif device == "cuda":
+                    load_kwargs["device_map"] = "auto"
+
+                base_model = AutoModelForCausalLM.from_pretrained(base_model_path, **load_kwargs)
+
+                # 加载LoRA适配器
+                logger.info(f"加载LoRA适配器: {model_path}")
+                from peft import PeftModel
+                peft_model = PeftModel.from_pretrained(base_model, model_path)
+
+                # 创建简单的包装类
+                class SimpleLoRAWrapper:
+                    def __init__(self, peft_model, tokenizer):
+                        self.peft_model = peft_model
+                        self.model = peft_model
+                        self.tokenizer = tokenizer
+
+                    def generate_response(self, prompt, max_length=512):
+                        try:
+                            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.peft_model.device)
+
+                            with torch.no_grad():
+                                outputs = self.peft_model.generate(
+                                    **inputs,
+                                    max_new_tokens=50,  # 关键：限制生成长度
+                                    temperature=0.7,
+                                    do_sample=True,
+                                    pad_token_id=self.tokenizer.eos_token_id,
+                                    repetition_penalty=1.5,  # 关键：强烈避免重复
+                                    early_stopping=True
+                                )
+
+                            # 只取新生成的部分
+                            response = self.tokenizer.decode(
+                                outputs[0][inputs['input_ids'].shape[1]:],
+                                skip_special_tokens=True
+                            )
+
+                            return response.strip()[:100]  # 限制在100字符内
+
+                        except Exception:
+                            return "抱歉，我现在无法回答这个问题。"
+
+                services['llm'] = SimpleLoRAWrapper(peft_model, tokenizer)
+                logger.info("LoRA模型加载完成")
+
             else:
-                # 原始模型，使用LLMService
-                logger.info("检测到原始模型，使用标准加载")
+                # 原始模型
+                logger.info("检测到原始模型，使用LLMService")
                 services['llm'] = LLMService(model_path)
-                success = True
 
-        except Exception as e:
-            logger.error(f"模型创建失败: {e}")
-            return jsonify({
-                "status": "error",
-                "message": f"模型创建失败: {str(e)}"
-            })
-
-        if success:
+            # 更新状态
             system_status['model_loaded'] = True
             system_status['model_path'] = model_path
             system_status['model_quantization'] = '4bit' if use_4bit else '8bit' if use_8bit else 'full'
 
-            logger.info("推理模型加载成功")
+            # 测试模型
+            try:
+                test_response = services['llm'].generate_response("你好", 20)
+                logger.info(f"模型测试成功: {test_response[:30]}...")
+            except Exception as test_error:
+                logger.warning(f"模型测试失败: {test_error}")
+
             return jsonify({
                 "status": "success",
                 "message": "模型加载成功",
                 "model_path": model_path,
-                "quantization": system_status['model_quantization']
+                "quantization": system_status['model_quantization'],
+                "model_type": "LoRA" if is_lora_model else "Base"
             })
-        else:
-            return jsonify({
-                "status": "error",
-                "message": "模型加载失败"
-            })
+
+        except Exception as e:
+            logger.error(f"模型加载失败: {e}")
+            return jsonify({"status": "error", "message": f"模型加载失败: {str(e)}"})
 
     except Exception as e:
-        logger.error(f"模型加载失败: {e}")
-        return jsonify({
-            "status": "error",
-            "message": f"模型加载失败: {str(e)}"
-        })
-
+        logger.error(f"load_model函数执行失败: {e}")
+        return jsonify({"status": "error", "message": f"加载失败: {str(e)}"})
 
 @app.route('/api/unload_model', methods=['POST'])
 def unload_model():
@@ -241,7 +327,6 @@ def unload_model():
             "status": "error",
             "message": str(e)
         })
-
 
 @app.route('/api/start_finetuning', methods=['POST'])
 def start_finetuning():
@@ -440,7 +525,6 @@ def start_finetuning():
             "message": str(e)
         })
 
-
 @app.route('/api/training_progress', methods=['GET'])
 def get_training_progress():
     """获取训练进度"""
@@ -494,7 +578,6 @@ def get_training_progress():
 
     return jsonify(progress_info)
 
-
 @app.route('/api/toggle_auto_cleanup', methods=['POST'])
 def toggle_auto_cleanup():
     """切换训练完成后的自动清理功能"""
@@ -518,7 +601,6 @@ def toggle_auto_cleanup():
             "status": "error",
             "message": str(e)
         })
-
 
 @app.route('/api/manual_cleanup', methods=['POST'])
 def manual_cleanup():
@@ -562,7 +644,6 @@ def manual_cleanup():
             "status": "error",
             "message": str(e)
         })
-
 
 @app.route('/api/system_memory_info', methods=['GET'])
 def get_system_memory_info():
@@ -610,7 +691,6 @@ def get_system_memory_info():
             "message": str(e)
         })
 
-
 # ======================== 其他API保持不变 ========================
 
 @app.route('/api/test_model', methods=['POST'])
@@ -626,6 +706,7 @@ def test_model():
         data = request.json
         question = data.get('question', '')
         max_tokens = data.get('max_tokens', 512)
+        temperature = data.get('temperature', 0.7)
 
         if not question.strip():
             return jsonify({
@@ -634,16 +715,29 @@ def test_model():
             })
 
         # 使用模型生成回答
-        if hasattr(services['llm'], 'generate_response'):
-            response = services['llm'].generate_response(question, max_tokens)
-        else:
-            response = services['llm'].generate_response(question, max_tokens)
+        try:
+            if hasattr(services['llm'], 'generate_response'):
+                response = services['llm'].generate_response(question, max_tokens)
+            else:
+                logger.error(f"模型对象没有 generate_response 方法: {type(services['llm'])}")
+                return jsonify({
+                    "status": "error",
+                    "message": "模型接口不兼容"
+                })
 
-        return jsonify({
-            "status": "success",
-            "response": response,
-            "model_quantization": system_status.get('model_quantization', 'unknown')
-        })
+            return jsonify({
+                "status": "success",
+                "result": response,  # 注意：这里用 result，前端期望这个字段
+                "model_quantization": system_status.get('model_quantization', 'unknown'),
+                "model_type": type(services['llm']).__name__
+            })
+
+        except Exception as model_error:
+            logger.error(f"模型推理失败: {model_error}")
+            return jsonify({
+                "status": "error",
+                "message": f"模型推理失败: {str(model_error)}"
+            })
 
     except Exception as e:
         logger.error(f"模型测试失败: {e}")
@@ -652,6 +746,38 @@ def test_model():
             "message": str(e)
         })
 
+@app.route('/api/debug_model_status', methods=['GET'])
+def debug_model_status():
+    """调试模型状态"""
+    try:
+        debug_info = {
+            "services_llm_exists": services['llm'] is not None,
+            "services_llm_type": type(services['llm']).__name__ if services['llm'] else None,
+            "system_status_model_loaded": system_status['model_loaded'],
+            "system_status_model_path": system_status.get('model_path'),
+            "system_status_quantization": system_status.get('model_quantization'),
+        }
+
+        # 检查模型方法
+        if services['llm']:
+            debug_info["model_methods"] = [method for method in dir(services['llm']) if not method.startswith('_')]
+            debug_info["has_generate_response"] = hasattr(services['llm'], 'generate_response')
+
+        # 检查知识图谱状态
+        debug_info["neo4j_connected"] = system_status['neo4j_connected']
+        debug_info["knowledge_graph_exists"] = services['knowledge_graph'] is not None
+
+        return jsonify({
+            "status": "success",
+            "debug_info": debug_info
+        })
+
+    except Exception as e:
+        logger.error(f"调试状态获取失败: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        })
 
 # ======================== 知识图谱API ========================
 
@@ -686,7 +812,6 @@ def connect_neo4j():
             "message": str(e)
         })
 
-
 @app.route('/api/generate_sample_knowledge', methods=['POST'])
 def generate_sample_knowledge():
     """生成示例知识"""
@@ -713,13 +838,13 @@ def generate_sample_knowledge():
             "message": str(e)
         })
 
-
 @app.route('/api/chat', methods=['POST'])
 def chat():
     """智能对话"""
     try:
         data = request.json
         message = data.get('message', '')
+        use_knowledge_graph = data.get('use_knowledge_graph', False)
 
         if not message.strip():
             return jsonify({
@@ -727,16 +852,43 @@ def chat():
                 "message": "消息不能为空"
             })
 
-        # 如果有模型，使用模型回答
-        if services['llm']:
-            response = services['llm'].generate_response(message)
-        else:
-            response = "抱歉，我现在无法回答这个问题。请确保已加载语言模型。"
+        # 检查模型是否加载
+        if not services['llm']:
+            return jsonify({
+                "status": "error",
+                "message": "模型未加载，请先在左侧面板加载模型"
+            })
 
-        return jsonify({
-            "status": "success",
-            "response": response
-        })
+            # 检查模型类型并调用相应的生成方法
+        try:
+            if hasattr(services['llm'], 'generate_response'):
+                # 标准 LLMService 或 LoRAFineTuner 都有这个方法
+                if use_knowledge_graph and services['knowledge_graph'] and system_status['neo4j_connected']:
+                    # 使用知识图谱增强回答
+                    response = chat_with_knowledge_graph(message)
+                else:
+                    # 直接使用模型回答
+                    response = services['llm'].generate_response(message)
+            else:
+                logger.error(f"模型对象类型错误: {type(services['llm'])}")
+                return jsonify({
+                    "status": "error",
+                    "message": f"模型对象类型不支持: {type(services['llm'])}"
+                })
+
+            return jsonify({
+                "status": "success",
+                "response": response,
+                "model_type": type(services['llm']).__name__,
+                "use_knowledge_graph": use_knowledge_graph and system_status['neo4j_connected']
+            })
+
+        except Exception as model_error:
+            logger.error(f"模型推理失败: {model_error}")
+            return jsonify({
+                "status": "error",
+                "message": f"模型推理失败: {str(model_error)}"
+            })
 
     except Exception as e:
         logger.error(f"智能对话失败: {e}")
@@ -745,6 +897,56 @@ def chat():
             "message": str(e)
         })
 
+def chat_with_knowledge_graph(message):
+    """结合知识图谱生成回答"""
+    try:
+        # 提取关键词 (简单版本)
+        keywords = []
+        if services['text_processor']:
+            keywords = services['text_processor'].extract_keywords(message)
+        else:
+            # 简单的关键词提取
+            import jieba
+            words = jieba.cut(message)
+            keywords = [word for word in words if len(word) > 1][:5]
+
+        # 从知识图谱查询相关信息
+        knowledge_items = []
+        for keyword in keywords:
+            try:
+                items = services['knowledge_graph'].find_related_knowledge(keyword)
+                knowledge_items.extend(items)
+            except Exception as e:
+                logger.warning(f"查询知识图谱失败 (关键词: {keyword}): {e}")
+
+        # 构建知识上下文
+        knowledge_context = ""
+        if knowledge_items:
+            knowledge_context = "\n相关知识:\n"
+            for item in knowledge_items[:5]:  # 限制知识条目数量
+                if isinstance(item, dict) and 'start_node' in item and 'end_node' in item:
+                    start_name = item['start_node'].get('name', '')
+                    relationship = item.get('relationship', '')
+                    end_name = item['end_node'].get('name', '')
+                    knowledge_context += f"- {start_name} {relationship} {end_name}\n"
+
+        # 构建增强的提示
+        enhanced_prompt = f"""基于以下知识回答问题:
+{knowledge_context}
+
+用户问题: {message}
+
+请提供准确、有帮助的回答:"""
+
+        # 使用模型生成回答
+        response = services['llm'].generate_response(enhanced_prompt)
+
+        return response
+
+    except Exception as e:
+        logger.error(f"知识图谱增强对话失败: {e}")
+        # 降级到普通对话
+        return services['llm'].generate_response(message)
 
 # ======================== 模型发现API ========================
 
@@ -926,7 +1128,6 @@ def get_model_info():
             "message": str(e)
         })
 
-
 @app.route('/api/check_quantization_support', methods=['GET'])
 def check_quantization_support():
     """检查量化训练支持情况"""
@@ -1004,7 +1205,6 @@ def check_quantization_support():
             "message": str(e)
         })
 
-
 # ======================== 系统API ========================
 
 @app.route('/api/system_status', methods=['GET'])
@@ -1023,7 +1223,6 @@ def get_system_status():
             "text_processor": services['text_processor'] is not None
         }
     })
-
 
 @app.route('/')
 def index():
@@ -1044,7 +1243,6 @@ def index():
         logger.error(f"主页路由出错: {e}")
         return f"<h1>系统错误</h1><p>{str(e)}</p>"
 
-
 # 错误处理
 @app.errorhandler(404)
 def not_found(error):
@@ -1053,14 +1251,12 @@ def not_found(error):
         "message": "API接口不存在"
     }), 404
 
-
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({
         "status": "error",
         "message": "服务器内部错误"
     }), 500
-
 
 if __name__ == '__main__':
     # 初始化服务

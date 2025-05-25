@@ -44,12 +44,16 @@ class LoRAFineTuner:
         """初始化LoRA微调器"""
         self.base_model_path = base_model_path
 
-        # 如果没有指定输出目录，使用时间戳生成
-        if output_dir is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            self.output_dir = f"models/deepseek-{timestamp}"
-        else:
+        # 只有明确指定output_dir时才创建目录
+        if output_dir is not None:
             self.output_dir = output_dir
+            # 确保输出目录存在
+            os.makedirs(self.output_dir, exist_ok=True)
+            logger.info(f"模型将保存到: {self.output_dir}")
+        else:
+            # 如果没有指定output_dir，不创建任何目录
+            self.output_dir = None
+            logger.info("推理模式，不创建输出目录")
 
         self.lora_r = lora_r
         self.lora_alpha = lora_alpha
@@ -59,9 +63,6 @@ class LoRAFineTuner:
         self.peft_model = None
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        # 确保输出目录存在
-        os.makedirs(self.output_dir, exist_ok=True)
-        logger.info(f"模型将保存到: {self.output_dir}")
 
     def load_base_model(self, use_4bit=True, use_8bit=False):
         """加载基础模型"""

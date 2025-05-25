@@ -1414,6 +1414,10 @@
             const message = input.value.trim();
 
             if (!message) return;
+            
+            // 先检查模型状态
+            console.log('发送消息前检查模型状态...');
+            await debugModelStatus();
 
             if (!modelLoaded) {
                 alert('请先加载模型！');
@@ -1440,13 +1444,17 @@
             try {
                 // 如果连接了知识图谱，使用知识增强的问答
                 let result;
+                console.log('Neo4j连接状态:', neo4jConnected);
+                
                 if (neo4jConnected) {
+                    console.log('使用知识图谱增强对话');
                     result = await callAPI('chat', 'POST', {
                         message: message,
                         use_knowledge_graph: true
                     });
                 } else {
-                    // 仅使用模型进行问答
+                    console.log('使用基本模型对话');
+                    // 使用test_model API确保兼容性
                     result = await callAPI('test_model', 'POST', {
                         question: message,
                         temperature: parseFloat(document.getElementById('temperature').value),
@@ -1454,19 +1462,24 @@
                     });
                 }
 
+                console.log('API响应:', result);
+
                 // 移除思考消息
                 chatContainer.removeChild(thinkingMsg);
 
                 if (result.status === 'success') {
+                    const response = result.response || result.result || '无回应';
                     const assistantMsg = document.createElement('div');
                     assistantMsg.className = 'chat-message chat-assistant';
-                    assistantMsg.innerHTML = `<strong>🤖 PEPPER:</strong> ${result.response || result.result}`;
+                    assistantMsg.innerHTML = `<strong>🤖 PEPPER:</strong> ${response}`;
                     chatContainer.appendChild(assistantMsg);
                 } else {
                     const errorMsg = document.createElement('div');
                     errorMsg.className = 'chat-message chat-assistant';
                     errorMsg.innerHTML = `<strong>🤖 PEPPER:</strong> 抱歉，处理您的问题时出现了错误：${result.message}`;
                     chatContainer.appendChild(errorMsg);
+                    
+                    console.error('API错误详情:', result);
                 }
 
                 chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -1480,11 +1493,41 @@
 
                 const errorMsg = document.createElement('div');
                 errorMsg.className = 'chat-message chat-assistant';
-                errorMsg.innerHTML = `<strong>🤖 PEPPER:</strong> 连接错误，请检查网络或重试。`;
+                errorMsg.innerHTML = `<strong>🤖 PEPPER:</strong> 连接错误，请检查网络或重试。详情: ${error.message}`;
                 chatContainer.appendChild(errorMsg);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
 
+                console.error('发送消息详细错误:', error);
                 logMessage('error', `发送消息失败: ${error.message}`);
+            }
+        }
+
+        async function debugModelStatus() {
+            try {
+                const result = await callAPI('debug_model_status');
+                console.log('模型调试信息:', result);
+                
+                if (result.status === 'success') {
+                    const info = result.debug_info;
+                    let debugMessage = `
+        模型调试信息:
+        - services['llm'] 存在: ${info.services_llm_exists}
+        - 模型类型: ${info.services_llm_type || '无'}
+        - 系统状态-模型已加载: ${info.system_status_model_loaded}
+        - 模型路径: ${info.system_status_model_path || '无'}
+        - 量化方式: ${info.system_status_quantization || '无'}
+        - 有generate_response方法: ${info.has_generate_response}
+        - Neo4j已连接: ${info.neo4j_connected}
+        - 知识图谱存在: ${info.knowledge_graph_exists}
+                    `;
+                    console.log('模型调试信息:',debugMessage);
+                    logMessage('info', '模型调试信息已输出到控制台');
+                } else {
+                    alert('获取调试信息失败: ' + result.message);
+                }
+            } catch (error) {
+                console.error('调试失败:', error);
+                alert('调试失败: ' + error.message);
             }
         }
 
@@ -1834,6 +1877,22 @@
 
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
+        
+        function addDebugButton() {
+            const chatPanel = document.querySelector('.panel:has(#chat-messages)');
+            if (chatPanel) {
+                const debugBtn = document.createElement('button');
+                debugBtn.textContent = '🔍 调试模型状态';
+                debugBtn.onclick = debugModelStatus;
+                debugBtn.style.margin = '5px';
+                debugBtn.className = 'btn-secondary';
+                
+                const formGroup = chatPanel.querySelector('.form-group:last-child');
+                if (formGroup) {
+                    formGroup.appendChild(debugBtn);
+                }
+            }
+        }
 
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
@@ -1885,6 +1944,9 @@
 
             // 更新预计训练时间
             updateEstimatedTime();
+            
+            // 延迟添加调试按钮，确保页面元素已加载
+            setTimeout(addDebugButton, 1000);
 
             logMessage('info', '系统初始化完成');
         });
