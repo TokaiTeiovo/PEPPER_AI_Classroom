@@ -380,12 +380,25 @@ class LoRAFineTuner:
                 if batch_size > 2:
                     batch_size = 2
                     logger.info("4bit训练建议batch_size设置为2")
-                gradient_accumulation_steps = 8  # 增加梯度累积步数
+                gradient_accumulation_steps = 2  # 增加梯度累积步数
             elif hasattr(self.model, "is_loaded_in_8bit") and self.model.is_loaded_in_8bit:
                 logger.info("使用8bit量化训练配置")
-                gradient_accumulation_steps = 4
+                gradient_accumulation_steps = 2
             else:
-                gradient_accumulation_steps = 4
+                gradient_accumulation_steps = 2
+
+            # 计算实际训练步数并打印调试信息
+            dataset_size = len(dataset)
+            steps_per_epoch = max(1, dataset_size // (batch_size * gradient_accumulation_steps))
+            total_steps = steps_per_epoch * epochs
+
+            logger.info(f"🔍训练参数调试信息:")
+            logger.info(f"数据集大小: {dataset_size}")
+            logger.info(f"批次大小: {batch_size}")
+            logger.info(f"梯度累积步数: {gradient_accumulation_steps}")
+            logger.info(f"每轮步数: {steps_per_epoch}")
+            logger.info(f"总轮数: {epochs}")
+            logger.info(f"总训练步数: {total_steps}")
 
             # 定义训练参数
             training_args = TrainingArguments(
@@ -395,10 +408,12 @@ class LoRAFineTuner:
                 gradient_accumulation_steps=gradient_accumulation_steps,
                 learning_rate=learning_rate,
                 weight_decay=0.01,
-                warmup_steps=100,
-                logging_steps=1,
-                save_steps=500,
+                warmup_steps=min(50, total_steps // 10),  # 动态调整warmup步数
+                logging_steps=1,  # 每步都记录日志
+                logging_strategy="steps",
+                save_steps=max(10, total_steps // 4),  # 动态调整保存频率
                 save_total_limit=2,
+                eval_strategy="no",  # 关闭评估以加快训练
                 fp16=(self.device == "cuda"),
                 bf16=False,
                 report_to="none",
@@ -406,6 +421,9 @@ class LoRAFineTuner:
                 dataloader_pin_memory=False,
                 gradient_checkpointing=True,
                 optim="adamw_torch",
+                disable_tqdm=False,  # 启用tqdm进度条
+                load_best_model_at_end=False,  # 不加载最佳模型以节省时间
+                max_steps=total_steps if total_steps > 0 else -1,  # 设置最大步数
             )
 
             # 创建数据收集器
@@ -418,37 +436,61 @@ class LoRAFineTuner:
             from transformers import TrainerCallback
 
             class ProgressCallback(TrainerCallback):
-                def __init__(self, callback_func):
+                def __init__(self, callback_func, total_epochs):
                     self.callback_func = callback_func
+                    self.total_epochs = total_epochs
                     self.last_reported_progress = 0
-                    logger.info("ProgressCallback 初始化完成")
+                    self.current_epoch = 0
+                    self.step_count = 0
+                    logger.info(f"ProgressCallback 初始化完成，总轮数: {total_epochs}")
 
                 def on_train_begin(self, args, state, control, **kwargs):
-                    logger.info(f"训练开始 - 总步数: {state.max_steps}")
+                    logger.info(f"训练开始 - 总步数: {state.max_steps}, 总轮数: {self.total_epochs}")
                     if self.callback_func:
-                        self.callback_func(0)  # 开始时设置为0%
+                        self.callback_func(15)  # 开始时设置为15%（模型加载完成）
 
                 def on_step_end(self, args, state, control, **kwargs):
+                    self.step_count += 1
                     if self.callback_func and state.max_steps > 0:
-                        # 计算真实进度百分比
-                        progress_percent = (state.global_step / state.max_steps) * 100
+                        # 计算当前进度：15% + (当前步数/总步数) * 80%（训练占80%进度）
+                        step_progress = (state.global_step / state.max_steps) * 80
+                        total_progress = 15 + step_progress
 
-                        # 只有进度变化超过1%才报告，避免过于频繁
-                        if progress_percent - self.last_reported_progress >= 1.0 or state.global_step == state.max_steps:
-                            logger.info(
-                                f"训练步骤: {state.global_step}/{state.max_steps}, 进度: {progress_percent:.1f}%")
-                            self.callback_func(progress_percent)
-                            self.last_reported_progress = progress_percent
+                        # 每步都报告进度
+                        logger.info(f"📊 训练步骤: {state.global_step}/{state.max_steps}, 进度: {total_progress:.1f}%")
+                        self.callback_func(min(99, int(total_progress)))
+                        self.last_reported_progress = total_progress
+
+                def on_epoch_begin(self, args, state, control, **kwargs):
+                    self.current_epoch = int(state.epoch) + 1
+                    logger.info(f"🔄 开始第 {self.current_epoch}/{self.total_epochs} 轮训练")
 
                 def on_epoch_end(self, args, state, control, **kwargs):
+                    # 轮次结束时强制更新进度
                     if self.callback_func and state.max_steps > 0:
-                        progress_percent = (state.global_step / state.max_steps) * 100
-                        self.callback_func(progress_percent)
+                        epoch_progress = (self.current_epoch / self.total_epochs) * 80
+                        total_progress = 15 + epoch_progress
+                        logger.info(f"✅ 第 {self.current_epoch} 轮训练完成，进度: {total_progress:.1f}%")
+                        self.callback_func(min(99, int(total_progress)))
+                        self.last_reported_progress = total_progress
+
+                def on_log(self, args, state, control, logs=None, **kwargs):
+                    # 在每次日志记录时也更新进度和显示损失
+                    if self.callback_func and state.max_steps > 0 and logs:
+                        step_progress = (state.global_step / state.max_steps) * 80
+                        total_progress = 15 + step_progress
+
+                        # 显示训练损失等信息
+                        if 'train_loss' in logs:
+                            logger.info(
+                                f"📈 步骤 {state.global_step}: 损失 = {logs['train_loss']:.4f}, 进度 = {total_progress:.1f}%")
+
+                        self.callback_func(min(99, int(total_progress)))
 
                 def on_train_end(self, args, state, control, **kwargs):
-                    logger.info("训练结束")
+                    logger.info("🎉 训练结束")
                     if self.callback_func:
-                        self.callback_func(100)  # 训练结束时设置为100%
+                        self.callback_func(99)  # 训练结束时设置为99%（保存模型需要时间）
 
             # 创建训练器
             trainer = Trainer(
@@ -462,7 +504,7 @@ class LoRAFineTuner:
             # 如果有进度回调，添加回调
             if progress_callback:
                 logger.info("添加进度回调到训练器")
-                progress_cb = ProgressCallback(progress_callback)
+                progress_cb = ProgressCallback(progress_callback, epochs)  # 传入总轮数
                 trainer.add_callback(progress_cb)
             else:
                 logger.warning("没有进度回调函数，将无法更新训练进度")
