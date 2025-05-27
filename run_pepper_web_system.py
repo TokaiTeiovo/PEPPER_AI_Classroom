@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-PEPPER智能教学系统 - 主启动脚本
+智能教学系统 - 主启动脚本
 集成大语言模型、知识图谱、多模态交互、智能教学四大功能模块
 """
 
@@ -93,7 +93,7 @@ def check_neo4j_availability():
         from neo4j import GraphDatabase
 
         # 尝试连接Neo4j（使用默认配置）
-        driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "admin123"))
+        driver = GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "adminadmin"))
         with driver.session() as session:
             result = session.run("RETURN 1")
             result.single()
@@ -126,7 +126,7 @@ def open_browser_delayed(url, delay=3):
 def print_system_info():
     """打印系统信息"""
     logger.info("=" * 80)
-    logger.info("PEPPER智能教学系统")
+    logger.info("智能教学系统")
     logger.info("=" * 80)
     logger.info("功能模块:")
     logger.info("  🧠 大语言模型集成 - DeepSeek模型接口、LoRA微调")
@@ -138,7 +138,7 @@ def print_system_info():
 
 def main():
     """主函数"""
-    parser = argparse.ArgumentParser(description='PEPPER智能教学系统')
+    parser = argparse.ArgumentParser(description='智能教学系统')
     parser.add_argument('--host', type=str, default='localhost',
                         help='服务器主机地址')
     parser.add_argument('--port', type=int, default=5000,

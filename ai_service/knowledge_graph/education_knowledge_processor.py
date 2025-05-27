@@ -28,17 +28,13 @@ logger = logging.getLogger("EDU_KNOWLEDGE_PROCESSOR")
 # 加载NLP模型
 try:
     nlp = spacy.load("zh_core_web_sm")
-    logger.info("中文NLP模型加载成功")
 except OSError:
-    logger.warning("中文NLP模型未找到，尝试下载...")
     try:
         from spacy.cli import download
 
         download("zh_core_web_sm")
         nlp = spacy.load("zh_core_web_sm")
-        logger.info("中文NLP模型下载和加载成功")
     except Exception as e:
-        logger.error(f"无法加载中文NLP模型: {e}")
         nlp = None
 
 

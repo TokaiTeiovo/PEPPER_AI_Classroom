@@ -139,42 +139,73 @@ class LoRAModelLoader:
             return "模型未加载"
 
         try:
-            # 调整提示格式
+            # 简化提示格式
             if not prompt.startswith("Human:"):
-                prompt = f"Human: {prompt}\n\nAssistant:"
+                formatted_prompt = f"Human: {prompt}\n\nAssistant:"
+            else:
+                formatted_prompt = prompt
 
             # 编码输入
-            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.peft_model.device)
+            inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.peft_model.device)
 
-            # 生成参数
+            # 优化生成参数
             gen_kwargs = {
-                "max_new_tokens": min(max_length, 512),
-                "temperature": 0.7,
-                "top_p": 0.9,
-                "top_k": 50,
+                "max_new_tokens": min(120, max_length),  # 限制长度
+                "temperature": 0.4,  # 降低随机性
+                "top_p": 0.85,  # 更保守的采样
+                "top_k": 25,  # 减少候选词
                 "do_sample": True,
                 "pad_token_id": self.tokenizer.eos_token_id,
-                "repetition_penalty": 1.1,
+                "eos_token_id": self.tokenizer.eos_token_id,
+                "repetition_penalty": 1.4,  # 强化重复惩罚
+                "early_stopping": True,
+                "no_repeat_ngram_size": 3,
             }
 
             # 生成回答
             with torch.no_grad():
                 output_ids = self.peft_model.generate(**inputs, **gen_kwargs)
 
-            # 解码输出
-            full_output = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
+            # 只解码新生成的部分
+            new_tokens = output_ids[0][inputs['input_ids'].shape[1]:]
+            response = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
 
-            # 提取回答部分
-            if "Assistant:" in full_output:
-                response = full_output.split("Assistant:", 1)[1].strip()
-            else:
-                response = full_output[len(prompt):].strip()
+            # 后处理
+            response = self._clean_response(response)
 
             return response
 
         except Exception as e:
             logger.error(f"生成回答失败: {e}")
-            return f"生成回答时出错: {str(e)}"
+            return "抱歉，我现在无法处理您的问题。"
+
+    def _clean_response(self, response):
+        """清理回复内容"""
+        if not response:
+            return "请提供更具体的问题。"
+
+        # 基本清理
+        response = response.strip()
+
+        # 移除可能的提示词残留
+        if "Human:" in response:
+            response = response.split("Human:")[0].strip()
+        if "Assistant:" in response:
+            response = response.replace("Assistant:", "").strip()
+
+        # 确保回复完整性
+        if len(response) < 5:
+            return "请重新表述您的问题。"
+
+        # 简单的句子完整性检查
+        if not any(response.endswith(punct) for punct in ['。', '！', '？', '.', '!', '?']):
+            # 如果没有合适的结尾标点，尝试在合理位置截断
+            if '，' in response:
+                response = response.rsplit('，', 1)[0] + '。'
+            elif len(response) > 10:
+                response += '。'
+
+        return response
 
 
 # 在 enhanced_api_server.py 中使用这个加载器

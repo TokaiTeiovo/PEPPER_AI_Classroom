@@ -231,7 +231,7 @@ class LoRAFineTuner:
 
     def prepare_dataset(self, data_path=None, instruction_data=None):
         """
-        准备训练数据集
+        准备训练数据集 - 优化中文对话格式
         支持从 JSON 或 CSV 读取 [{instruction, input, output}] 格式
         """
         try:
@@ -245,28 +245,39 @@ class LoRAFineTuner:
                     instruction_data = pd.read_csv(data_path).to_dict('records')
 
             if not instruction_data:
-                # 示例数据
+                # 中文示例数据
                 instruction_data = [
                     {
                         "instruction": "解释Python中for循环和while循环的区别",
                         "input": "",
-                        "output": "for循环用于遍历序列，while用于条件循环。"
+                        "output": "您好！for循环用于遍历已知序列，while循环基于条件判断。for循环次数确定，while循环次数不确定。for循环语法简洁，while循环需要手动管理循环变量。"
                     },
                     {
-                        "instruction": "PEPPER机器人在课堂上有哪些优势",
+                        "instruction": "你好",
                         "input": "",
-                        "output": "互动性强，具备视觉语音交互，提升教学效率。"
+                        "output": "您好！我是PEPPER智能教学助手，很高兴为您服务！有什么可以帮助您的吗？"
+                    },
+                    {
+                        "instruction": "介绍一下自己",
+                        "input": "",
+                        "output": "我是PEPPER智能教学助手，基于DeepSeek模型。我可以帮助您学习编程、人工智能、数学等知识，提供个性化的学习建议。"
                     }
                 ]
 
             logger.info(f"准备训练数据集，共{len(instruction_data)}条记录")
 
-            # 转换为 prompt + response 格式
+            # 转换为中文对话格式
             def format_instruction(example):
                 instruction = example["instruction"]
                 input_text = example.get("input", "")
                 output = example["output"]
-                prompt = f"Human: {instruction}\n{input_text}\n\nAssistant: " if input_text else f"Human: {instruction}\n\nAssistant: "
+
+                # 使用中文格式的对话模板
+                if input_text.strip():
+                    prompt = f"用户: {instruction}\n补充信息: {input_text}\n\n助手: "
+                else:
+                    prompt = f"用户: {instruction}\n\n助手: "
+
                 full_text = prompt + output
                 return {"text": full_text}
 
@@ -285,13 +296,63 @@ class LoRAFineTuner:
                 return tokens
 
             tokenized_dataset = raw_dataset.map(tokenize_function, batched=False)
-            tokenized_dataset = tokenized_dataset.remove_columns(["text"])  # 删除text字段，避免转换tensor时报错
+            tokenized_dataset = tokenized_dataset.remove_columns(["text"])
 
             return tokenized_dataset
 
         except Exception as e:
             logger.error(f"数据集准备失败: {e}")
             return None
+
+        def generate_response(self, prompt, max_new_tokens=512):
+            """使用微调后的模型生成回答 - 强化中文输出"""
+            if not self.peft_model:
+                logger.error("模型未加载")
+                return "模型未加载，无法生成回答"
+
+            try:
+                # 为DeepSeek模型调整中文提示格式
+                if not prompt.startswith("用户:"):
+                    system_prompt = "你是PEPPER智能教学助手，请用中文回答所有问题。"
+                    prompt = f"{system_prompt}\n用户: {prompt}\n\n助手: "
+
+                # 编码输入
+                inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+
+                # 设置生成参数，优化中文生成
+                gen_kwargs = {
+                    "max_new_tokens": min(max_new_tokens, 200),  # 限制长度
+                    "temperature": 0.8,
+                    "top_p": 0.9,
+                    "top_k": 40,
+                    "do_sample": True,
+                    "pad_token_id": self.tokenizer.eos_token_id,
+                    "repetition_penalty": 1.2,
+                    "no_repeat_ngram_size": 3,
+                }
+
+                # 生成回答
+                with torch.no_grad():
+                    output_ids = self.peft_model.generate(**inputs, **gen_kwargs)
+
+                # 解码输出
+                full_output = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
+
+                # 提取回答部分
+                if "助手:" in full_output:
+                    response = full_output.split("助手:")[-1].strip()
+                else:
+                    response = full_output[len(prompt):].strip()
+
+                # 限制回答长度，避免过长输出
+                if len(response) > 300:
+                    response = response[:300] + "..."
+
+                return response
+
+            except Exception as e:
+                logger.error(f"生成回答失败: {e}")
+                return "抱歉，我现在无法回答这个问题。请稍后再试。"
 
     def train(self, dataset, epochs=3, batch_size=4, learning_rate=2e-4, progress_callback=None):
         """训练模型"""
@@ -454,43 +515,79 @@ class LoRAFineTuner:
             return "模型未加载，无法生成回答"
 
         try:
-            # 为DeepSeek模型调整提示格式
+            # 为DeepSeek模型调整提示格式 - 简化格式
             if not prompt.startswith("Human:"):
-                prompt = f"Human: {prompt}\n\nAssistant:"
+                formatted_prompt = f"Human: {prompt}\n\nAssistant:"
+            else:
+                formatted_prompt = prompt
 
             # 编码输入
-            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+            inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.model.device)
 
-            # 设置生成参数
+            # 优化生成参数 - 专为教学问答优化
             gen_kwargs = {
-                "max_new_tokens": min(max_new_tokens, 512),
-                "temperature": 0.7,
-                "top_p": 0.9,
-                "top_k": 50,
+                "max_new_tokens": min(150, max_new_tokens),  # 限制长度，避免冗长回复
+                "temperature": 0.3,  # 降低随机性，提高一致性
+                "top_p": 0.8,  # 更保守的nucleus sampling
+                "top_k": 30,  # 减少候选词数量
                 "do_sample": True,
                 "pad_token_id": self.tokenizer.eos_token_id,
-                "repetition_penalty": 1.1,  # 避免重复
+                "eos_token_id": self.tokenizer.eos_token_id,
+                "repetition_penalty": 1.3,  # 增强重复惩罚
+                "length_penalty": 1.0,  # 长度惩罚
+                "early_stopping": True,  # 启用早停
+                "no_repeat_ngram_size": 3,  # 避免3-gram重复
             }
 
             # 生成回答
             with torch.no_grad():
                 output_ids = self.peft_model.generate(**inputs, **gen_kwargs)
 
-            # 解码输出
-            full_output = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
+            # 解码输出 - 只取新生成的部分
+            new_tokens = output_ids[0][inputs['input_ids'].shape[1]:]
+            response = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
 
-            # 提取回答部分（去除提示部分）
-            if "Assistant:" in full_output:
-                response = full_output.split("Assistant:", 1)[1].strip()
-            else:
-                response = full_output[len(prompt):].strip()
+            # 后处理：清理和优化回复
+            response = self._post_process_response(response)
 
             return response
 
         except Exception as e:
             logger.error(f"生成回答失败: {e}")
-            return f"生成回答时出错: {str(e)}"
+            return "抱歉，我现在无法回答这个问题。"
 
+    def _post_process_response(self, response):
+        """后处理生成的回复"""
+        if not response:
+            return "抱歉，我没有理解您的问题。"
+
+        # 移除多余的空白
+        response = response.strip()
+
+        # 如果响应为空或过短
+        if len(response) < 3:
+            return "抱歉，我需要更多信息来回答您的问题。"
+
+        # 移除可能的重复句子
+        sentences = response.split('。')
+        unique_sentences = []
+        seen = set()
+
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if sentence and sentence not in seen and len(sentence) > 5:
+                unique_sentences.append(sentence)
+                seen.add(sentence)
+
+        # 重新组合句子
+        if unique_sentences:
+            cleaned_response = '。'.join(unique_sentences)
+            if not cleaned_response.endswith('。') and not cleaned_response.endswith(
+                    '！') and not cleaned_response.endswith('？'):
+                cleaned_response += '。'
+            return cleaned_response
+
+        return response
 
 # 当脚本直接运行时，执行示例训练过程
 if __name__ == "__main__":

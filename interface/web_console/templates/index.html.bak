@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PEPPER智能教学系统</title>
+    <title>智能教学系统</title>
     <style>
         * {
             margin: 0;
@@ -367,7 +367,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>PEPPER智能教学系统</h1>
+            <h1>智能教学系统</h1>
             <p>基于DeepSeek模型的个性化AI教学助手</p>
         </div>
 

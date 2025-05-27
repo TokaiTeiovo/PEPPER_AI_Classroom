@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-PEPPER智能教学系统 - 增强API服务器
+智能教学系统 - 增强API服务器
 支持大语言模型、知识图谱、多模态交互、智能教学四大功能模块
 """
 import gc
@@ -235,29 +235,50 @@ def load_model():
 
                     def generate_response(self, prompt, max_length=512):
                         try:
-                            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.peft_model.device)
+                            # 简化输入格式
+                            if not prompt.startswith("Human:"):
+                                formatted_prompt = f"Human: {prompt}\n\nAssistant:"
+                            else:
+                                formatted_prompt = prompt
+
+                            inputs = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.peft_model.device)
 
                             with torch.no_grad():
                                 outputs = self.peft_model.generate(
                                     **inputs,
-                                    max_new_tokens=50,  # 关键：限制生成长度
-                                    temperature=0.7,
+                                    max_new_tokens=80,  # 进一步限制长度
+                                    temperature=0.2,  # 更低的温度
+                                    top_p=0.9,
+                                    top_k=20,
                                     do_sample=True,
                                     pad_token_id=self.tokenizer.eos_token_id,
-                                    repetition_penalty=1.5,  # 关键：强烈避免重复
-                                    early_stopping=True
+                                    eos_token_id=self.tokenizer.eos_token_id,
+                                    repetition_penalty=1.5,  # 更强的重复惩罚
+                                    early_stopping=True,
+                                    no_repeat_ngram_size=2,
                                 )
 
                             # 只取新生成的部分
-                            response = self.tokenizer.decode(
-                                outputs[0][inputs['input_ids'].shape[1]:],
-                                skip_special_tokens=True
-                            )
+                            new_tokens = outputs[0][inputs['input_ids'].shape[1]:]
+                            response = self.tokenizer.decode(new_tokens, skip_special_tokens=True)
 
-                            return response.strip()[:100]  # 限制在100字符内
+                            # 简单清理
+                            response = response.strip()
 
-                        except Exception:
-                            return "抱歉，我现在无法回答这个问题。"
+                            # 移除明显的重复或无意义内容
+                            if len(response) < 3:
+                                return "请具体说明您的问题。"
+
+                            # 确保回复完整
+                            if not response.endswith(('。', '！', '？', '.', '!', '?')):
+                                if len(response) > 10:
+                                    response += '。'
+
+                            return response[:200]  # 硬性限制最大长度
+
+                        except Exception as e:
+                            logger.error(f"生成回答失败: {e}")
+                            return "抱歉，我暂时无法回答这个问题。"
 
                 services['llm'] = SimpleLoRAWrapper(peft_model, tokenizer)
                 logger.info("LoRA模型加载完成")
@@ -931,7 +952,7 @@ def chat_with_knowledge_graph(message):
                     knowledge_context += f"- {start_name} {relationship} {end_name}\n"
 
         # 构建增强的提示
-        enhanced_prompt = f"""基于以下知识回答问题:
+        enhanced_prompt = f"""基于以下知识用中文回答问题:
 {knowledge_context}
 
 用户问题: {message}
@@ -1235,7 +1256,7 @@ def index():
             return html_content
         else:
             return """
-            <h1>PEPPER智能教学系统</h1>
+            <h1>智能教学系统</h1>
             <p>API服务器正在运行</p>
             <p>请访问 <a href="/api/system_status">/api/system_status</a> 查看系统状态</p>
             """
@@ -1262,7 +1283,7 @@ if __name__ == '__main__':
     # 初始化服务
     initialize_services()
 
-    logger.info("PEPPER智能教学系统API服务器启动中...")
+    logger.info("智能教学系统API服务器启动中...")
     logger.info("访问地址: http://localhost:5000")
 
     # 启动Flask应用

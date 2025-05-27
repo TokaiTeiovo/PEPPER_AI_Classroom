@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>PEPPER智能教学系统</title>
+    <title>智能教学系统</title>
     <style>
         * {
             margin: 0;
@@ -396,7 +396,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🤖 PEPPER智能教学系统</h1>
+            <h1>🤖 智能教学系统</h1>
             <p>基于DeepSeek-LoRA微调与Neo4j知识图谱的多模态智能教育平台</p>
         </div>
 
@@ -647,7 +647,7 @@
 
                     <div class="chat-container" id="chat-messages">
                         <div class="chat-message chat-assistant">
-                            <strong>🤖 PEPPER:</strong> 你好！我是基于DeepSeek和Neo4j知识图谱的AI教学助手。请先加载模型和连接知识图谱，然后就可以开始对话了！
+                            <strong>🤖 智能教学辅助系统:</strong> 你好！我是基于DeepSeek和Neo4j知识图谱的AI教学助手。请先加载模型和连接知识图谱，然后就可以开始对话了！
                         </div>
                     </div>
 
@@ -668,7 +668,7 @@
         <div class="panel">
             <h2>📝 系统日志</h2>
             <div class="log-container" id="system-log">
-                [系统] PEPPER智能教学系统已启动，等待操作...
+                [系统] 智能教学系统已启动，等待操作...
             </div>
         </div>
     </div>
@@ -1257,7 +1257,7 @@
             // 显示正在思考的消息
             const thinkingMsg = document.createElement('div');
             thinkingMsg.className = 'chat-message chat-assistant';
-            thinkingMsg.innerHTML = '<strong>🤖 PEPPER:</strong> 正在思考中...';
+            thinkingMsg.innerHTML = '<strong>🤖 智能教育系統:</strong> 正在思考中...';
             chatContainer.appendChild(thinkingMsg);
             chatContainer.scrollTop = chatContainer.scrollHeight;
 
@@ -1412,7 +1412,7 @@
 
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
-            logMessage('info', 'PEPPER智能教学系统界面加载完成');
+            logMessage('info', '智能教学系统界面加载完成');
 
             // 设置事件监听器
             setupEventListeners();

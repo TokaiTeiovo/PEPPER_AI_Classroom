@@ -1,5 +1,5 @@
 """
-个性化教学模块 - 用于PEPPER机器人教学系统提供个性化学习建议
+个性化教学模块 - 用于教学系统提供个性化学习建议
 
 该模块基于学生的历史学习数据，结合知识图谱和大语言模型，
 为学生提供个性化学习建议，如学习资料推荐、学习路径规划等
@@ -490,49 +490,6 @@ class PersonalizedTeaching:
             logger.error(f"查找相关主题失败: {e}")
             return []
 
-    def generate_learning_path(self, student_id, goal_topic):
-        """生成个性化学习路径"""
-        profile = self.get_student_profile(student_id)
-        if not profile:
-            logger.error(f"无法找到学生档案: {student_id}")
-            return None
-
-        # 尝试从知识图谱中查找相关知识点
-        knowledge_items = self.knowledge_graph.find_related_knowledge(goal_topic)
-
-        # 构建知识图谱上下文
-        kg_context = self._build_kg_context(knowledge_items)
-
-        # 构建学生上下文
-        student_context = self._build_student_context(profile)
-
-        # 使用LLM生成学习路径
-        prompt = f"""作为一个教育AI助手，请为学生生成一个个性化的学习路径，帮助他们掌握"{goal_topic}"。
-
-学生信息:
-{student_context}
-
-相关知识点:
-{kg_context}
-
-基于以上信息，请提供一个结构化的学习路径，包括:
-1. 学习目标
-2. 前置知识
-3. 学习步骤（按顺序排列）
-4. 每个步骤的推荐学习资源类型（考虑学生的学习风格）
-5. 如何评估学习成果
-
-请确保学习路径考虑学生的已有知识、强弱项和学习偏好。"""
-
-        learning_path = self.llm_service.generate_response(prompt, max_length=1500)
-
-        return {
-            "student_id": student_id,
-            "goal_topic": goal_topic,
-            "learning_path": learning_path,
-            "generated_at": datetime.now().isoformat()
-        }
-
     def _build_kg_context(self, knowledge_items):
         """构建知识图谱上下文"""
         if not knowledge_items:
@@ -582,7 +539,7 @@ class PersonalizedTeaching:
         return context
 
     def generate_personalized_answer(self, student_id, question):
-        """生成针对学生的个性化回答"""
+        """生成针对学生的个性化回答 - 强化中文输出"""
         profile = self.get_student_profile(student_id)
         if not profile:
             # 如果找不到学生档案，仍然可以回答，但不会个性化
@@ -612,19 +569,27 @@ class PersonalizedTeaching:
         student_context = self._build_student_context(profile)
         kg_context = self._build_kg_context(unique_items)
 
-        prompt = f"""作为一个教育AI助手，请针对学生的问题提供个性化的回答。
+        # 构建中文提示词
+        prompt = f"""你是PEPPER智能教学助手。请基于学生情况和相关知识，用中文提供个性化回答。
 
-学生信息:
-{student_context}
+    学生情况：
+    {student_context}
 
-相关知识:
-{kg_context}
+    相关知识：
+    {kg_context}
 
-学生问题: {question}
+    学生问题：{question}
 
-请提供一个针对这个学生的个性化回答，考虑他们的学习风格、强弱项和兴趣。解释应该清晰、准确，并适合学生的水平。如果回答涉及学生的弱项，请提供更详细的解释和例子。"""
+    请用中文提供个性化回答，要求：
+    1. 考虑学生的学习风格和水平
+    2. 语言亲切友好，易于理解
+    3. 针对学生的薄弱环节给出更详细的解释
+    4. 如果涉及学生擅长的领域，可以适当深入
+    5. 提供实用的学习建议
 
-        personalized_answer = self.llm_service.generate_response(prompt, max_length=1000)
+    回答："""
+
+        personalized_answer = self.llm_service.generate_response(prompt, max_length=800)
 
         # 添加学习资源推荐
         # 尝试从问题中提取主题
@@ -638,12 +603,70 @@ class PersonalizedTeaching:
         if topic:
             resources = self.recommend_learning_resources(student_id, topic, count=2)
             if resources:
-                resource_text = "\n\n还可以参考以下学习资源:\n"
+                resource_text = "\n\n📚 相关学习资源推荐：\n"
                 for resource in resources:
-                    resource_text += f"- {resource['title']} ({resource['type']}): {resource['url']}\n"
+                    resource_text += f"• {resource['title']} ({resource['type']})\n"
                 personalized_answer += resource_text
 
         return personalized_answer
+
+    def generate_learning_path(self, student_id, goal_topic):
+        """生成个性化学习路径 - 中文版本"""
+        profile = self.get_student_profile(student_id)
+        if not profile:
+            logger.error(f"无法找到学生档案: {student_id}")
+            return None
+
+        # 尝试从知识图谱中查找相关知识点
+        knowledge_items = self.knowledge_graph.find_related_knowledge(goal_topic)
+
+        # 构建知识图谱上下文
+        kg_context = self._build_kg_context(knowledge_items)
+
+        # 构建学生上下文
+        student_context = self._build_student_context(profile)
+
+        # 使用LLM生成中文学习路径
+        prompt = f"""你是PEPPER智能教学助手。请为学生制定个性化的中文学习路径。
+
+    学生信息：
+    {student_context}
+
+    目标主题：{goal_topic}
+
+    相关知识点：
+    {kg_context}
+
+    请用中文制定详细的学习路径，包括：
+
+    1. 🎯 学习目标
+       - 明确具体的学习成果
+
+    2. 📚 前置知识检查
+       - 需要掌握的基础知识点
+
+    3. 📖 学习步骤（按顺序）
+       - 第一步：基础概念理解
+       - 第二步：核心知识掌握  
+       - 第三步：实践应用
+       - 第四步：综合提升
+
+    4. 🎨 学习方式建议
+       - 根据学生学习风格提供建议
+
+    5. ✅ 学习评估方式
+       - 如何检验学习成果
+
+    请确保路径考虑学生的现有基础、学习偏好和薄弱环节。用中文回答："""
+
+        learning_path = self.llm_service.generate_response(prompt, max_length=1200)
+
+        return {
+            "student_id": student_id,
+            "goal_topic": goal_topic,
+            "learning_path": learning_path,
+            "generated_at": datetime.now().isoformat()
+        }
 
     def add_learning_interaction(self, student_id, topic, question, answer_quality=None):
         """记录学习交互，更新学生档案"""

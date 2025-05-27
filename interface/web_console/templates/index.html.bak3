@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>PEPPER智能教学系统</title>
+    <title>智能教学系统</title>
     <style>
         * {
             margin: 0;
@@ -396,7 +396,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🤖 PEPPER智能教学系统</h1>
+            <h1>🤖 智能教学系统</h1>
             <p>基于DeepSeek-LoRA微调与Neo4j知识图谱的多模态智能教育平台</p>
         </div>
 
@@ -668,7 +668,7 @@
         <div class="panel">
             <h2>📝 系统日志</h2>
             <div class="log-container" id="system-log">
-                [系统] PEPPER智能教学系统已启动，等待操作...
+                [系统] 智能教学系统已启动，等待操作...
             </div>
         </div>
     </div>
@@ -1438,7 +1438,7 @@
 
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
-            logMessage('info', 'PEPPER智能教学系统界面加载完成');
+            logMessage('info', '智能教学系统界面加载完成');
             
             // 检查关键元素是否存在
             const criticalElements = {
